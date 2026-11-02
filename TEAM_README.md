@@ -312,6 +312,54 @@ search call: ingest wrote two sample documents to the knowledge store, the
 research loop searched it, both documents came back as hits, and the answer
 was built from them. Real answer quality still needs a machine with Ollama.
 
+## Code assistant: local help with our own scripts
+
+A coding helper for the team's scripts: CSV clean-ups, report generators,
+import helpers. It reads and writes files inside one workspace folder, runs
+Python in a hardened subprocess, and reasons step by step. The model runs on
+Ollama, so code and data never leave the machine.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/code-assistant.toml` | Config installed to `~/.openjarvis/config.toml`, with file access fenced to one folder. |
+| `scripts/floras-auto/setup-code-assistant.sh` | Installs the config and points the fence at the workspace you choose. |
+
+Set it up and start a session:
+
+```bash
+scripts/floras-auto/setup-code-assistant.sh ~/FlorasAuto/scripts
+```
+
+```bash
+cd ~/FlorasAuto/scripts && uv run jarvis chat
+```
+
+### Safety decisions, and why
+
+- **Use `jarvis chat`, never `jarvis ask`, with this agent.** The ask command
+  auto-approves every tool call (`src/openjarvis/cli/ask.py`, the
+  `confirm_callback` that always returns true). Chat prompts y/N before any
+  tool marked sensitive. Verified in the sandbox: with `shell_exec` enabled,
+  `jarvis ask` ran a shell command with no prompt at all.
+- **`shell_exec` is left out of the config.** The Python interpreter tool
+  covers most script work and runs in a subprocess that blocks `os`, `sys`,
+  `subprocess`, and network imports, with a timeout. If a task truly needs
+  the shell, add `shell_exec` to `tools.enabled` for that session and stay
+  in chat.
+- **File access is fenced.** `security.allowed_dirs` limits `file_read` and
+  `file_write` to the workspace. Verified: a read inside the fence succeeded,
+  a read of `/etc/hostname` was refused, a write landed inside the folder.
+- **No web search**, so questions and code stay local.
+- The upstream guide mentions a `sandboxed` agent for Docker isolation. It is
+  not registered in this version, so do not rely on it.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine that issues one
+tool call per request: Python execution returned the right result, reads and
+writes respected the fence, and the agent had no shell tool available. Real
+code quality still needs a machine with Ollama.
+
 ## Known quirks
 
 - `jarvis config show` reports `Tools: none` even when the config enables
