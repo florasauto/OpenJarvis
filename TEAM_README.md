@@ -527,6 +527,58 @@ note), calculator (correct total), and file write (draft landed in the
 drafts folder) across four turns. Real reasoning still needs a machine with
 Ollama.
 
+## Unit intake checker: an auditable ReAct agent
+
+The native ReAct agent reasons in a visible Thought, Action, Observation
+loop, which makes it the right choice when a colleague needs to see how a
+conclusion was reached. Ours works one unit at a time: it searches the
+notes, walks a fixed intake checklist (title, odometer, keys, transport,
+yard location, parts promises, photos, damage), writes the checklist to the
+intake folder, and reports only the open items and who should own them.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/intake-checker.toml` | Config with the `native_react` agent, five tools, and file access fenced to the notes and intake folders. |
+| `configs/floras-auto/prompts/native_react_system_prompt.md` | The agent's system prompt: the checklist, the rules, and the ReAct format block. |
+| `scripts/floras-auto/setup-intake-checker.sh` | Installs the config, installs the prompt with the intake path written in, and indexes the notes. |
+
+Set it up and run one unit:
+
+```bash
+scripts/floras-auto/setup-intake-checker.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/intake
+```
+
+```bash
+uv run jarvis ask "Intake checklist for the IAA SUV"
+```
+
+### How this agent is customised, and a caution
+
+- **It ignores the persona files.** The ReAct agent builds its own system
+  prompt and does not use the `[memory_files]` persona. Customisation goes
+  through an override file at `~/.openjarvis/agents/native_react/system_prompt.md`,
+  which the setup script installs. The override must keep the format block
+  and end with the `{skill_examples}{tool_descriptions}` placeholders, or
+  the agent loses its tool list.
+- **The override is machine-wide.** Every use of `native_react` on that
+  machine gets the intake prompt. Keep this agent on its own machine or
+  accept that `jarvis ask --agent native_react` always means intake.
+- **Use a 9B model or larger.** The text format depends on the model
+  following instructions exactly; smaller models drift and the loop stalls.
+- Few-shot examples can be added at
+  `~/.openjarvis/agents/native_react/few_shot.json` if the model needs
+  nudging on the format.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine that speaks
+the ReAct text format: the setup script installed the config and override
+and indexed a sample notes file; one request ran three turns, a memory
+search that found the note, a file write that landed in the intake folder,
+and a final answer; the engine's system prompt contained the override, the
+intake path, and the tool list. Real checklist judgement still needs a
+machine with Ollama.
+
 ## Known quirks
 
 - **`uv sync` removes the Rust extension.** Any `uv sync` rebuilds the venv
