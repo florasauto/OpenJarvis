@@ -1,0 +1,51 @@
+# Floras Auto — Code Assistant
+#
+# A local coding helper for the team's own scripts: CSV clean-ups, report
+# generators, import helpers. It can read and write files inside one folder,
+# run Python in a hardened subprocess, and reason step by step. The model
+# runs on Ollama, so code and data never leave the machine.
+#
+# Install with:  scripts/floras-auto/setup-code-assistant.sh [WORKSPACE_DIR]
+# Or by hand:    cp configs/floras-auto/code-assistant.toml ~/.openjarvis/config.toml
+#                then edit security.allowed_dirs below.
+#
+# Use it through chat, which asks before running anything marked sensitive:
+#                cd ~/FlorasAuto/scripts && uv run jarvis chat
+# Avoid `jarvis ask` for this agent: it auto-approves every tool call.
+#
+# Based on the upstream code-assistant preset
+# (configs/openjarvis/examples/code-assistant.toml).
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+# Uncomment and set when Ollama runs on another machine on the shop network.
+# host = "http://192.168.1.50:11434"
+
+[intelligence]
+# qwen3.5:9b handles single-file scripts. Use a larger model for multi-file work.
+default_model = "qwen3.5:9b"
+temperature = 0.2                   # Low temperature for predictable code.
+
+[agent]
+default_agent = "orchestrator"      # Multi-turn with tool selection.
+max_turns = 10
+
+[tools]
+# Deliberately left out:
+#   shell_exec  - runs arbitrary shell commands; add it only if needed, and
+#                 then use `jarvis chat` so each call is confirmed.
+#   web_search  - keeps questions and code local.
+enabled = ["code_interpreter", "file_read", "file_write", "think", "calculator"]
+
+[security]
+profile = "personal"
+# file_read and file_write refuse anything outside these folders. Relative
+# paths the agent uses resolve inside the first entry. The setup script
+# replaces this with the workspace you choose.
+allowed_dirs = ["~/FlorasAuto/scripts"]
+
+[analytics]
+enabled = false
+choice_recorded = true
