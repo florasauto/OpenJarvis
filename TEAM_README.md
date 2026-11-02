@@ -255,6 +255,63 @@ the four sources are recognised and reported as not connected, the collector
 builds the briefing prompt, and the engine is called. Voice output and the
 real briefing text still need a machine with Ollama and the voice extra.
 
+## Deep research: questions over our own documents
+
+Ask questions about dealership documents such as title procedures, vendor
+lists, auction notes, and parts references, and get answers that cite the
+source files. Documents are ingested into a local knowledge store and
+answered by the local model, so nothing leaves the machine. Web search is
+left out of the config on purpose.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/deep-research.toml` | Config installed to `~/.openjarvis/config.toml`. |
+| `scripts/floras-auto/ingest-documents.py` | Ingests a folder (.md .txt .csv .pdf .docx) into the knowledge store. Re-running replaces, never duplicates. |
+| `scripts/floras-auto/setup-deep-research.sh` | Installs PDF and Word support, the config, and runs the ingest. |
+
+Set it up and ask a question:
+
+```bash
+scripts/floras-auto/setup-deep-research.sh ~/FlorasAuto/documents
+```
+
+```bash
+uv run jarvis ask --research "What is our policy on pending titles?"
+```
+
+Re-ingest whenever documents change:
+
+```bash
+uv run python scripts/floras-auto/ingest-documents.py ~/FlorasAuto/documents
+```
+
+Optional, for better ranking once Ollama is installed:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+### Two things the upstream guide gets wrong
+
+- **Use the ingest script, not `jarvis memory index`.** The memory index
+  command writes to `memory.db`. The deep research tools read `knowledge.db`.
+  Following the upstream guide leaves the agent with nothing to search.
+- **Always pass `--research` to `jarvis ask`.** From the CLI, the
+  `deep_research` agent is built without a knowledge store even when
+  `knowledge.db` exists, so every search returns "No knowledge store
+  configured". The `--research` flag uses a separate research loop that is
+  wired correctly. The GUI's Deep Research mode is wired correctly too.
+
+Export Excel sheets to CSV or PDF before ingesting. Unsupported files are
+skipped and listed at the end of the ingest run.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine that issues one
+search call: ingest wrote two sample documents to the knowledge store, the
+research loop searched it, both documents came back as hits, and the answer
+was built from them. Real answer quality still needs a machine with Ollama.
+
 ## Known quirks
 
 - `jarvis config show` reports `Tools: none` even when the config enables
