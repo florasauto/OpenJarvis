@@ -1,0 +1,54 @@
+# Floras Auto — Deep Research
+#
+# Multi-hop question answering over the dealership's own documents: policies,
+# vendor lists, auction notes, title procedures, parts references. Answers
+# cite the source documents. Everything is indexed and answered locally.
+#
+# Install with:  scripts/floras-auto/setup-deep-research.sh [DOCS_DIR]
+# Or by hand:    cp configs/floras-auto/deep-research.toml ~/.openjarvis/config.toml
+#                uv run python scripts/floras-auto/ingest-documents.py ~/FlorasAuto/documents
+#
+# Ask questions with the --research flag:
+#                uv run jarvis ask --research "What is our policy on pending titles?"
+# Do NOT use `jarvis memory index` for this agent: it fills memory.db, while
+# deep research reads knowledge.db.
+#
+# Based on the upstream deep-research preset
+# (configs/openjarvis/examples/deep-research.toml).
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+# Uncomment and set when Ollama runs on another machine on the shop network.
+# host = "http://192.168.1.50:11434"
+
+[intelligence]
+# qwen3.5:9b needs roughly 6 GB of RAM. Use qwen3.5:4b on smaller machines,
+# or a larger model for better cross-referencing on complex questions.
+default_model = "qwen3.5:9b"
+temperature = 0.3                   # Low temperature keeps answers factual.
+
+[agent]
+# "simple" keeps a plain `jarvis ask` usable as ordinary chat. Document
+# questions go through `jarvis ask --research`, which uses the research loop
+# over knowledge.db regardless of this setting. Setting "deep_research" here
+# does not help: from the CLI that agent never receives the knowledge store.
+default_agent = "simple"
+max_turns = 8                       # Reasoning hops. Raise to 12 if answers are vague.
+
+[tools]
+# web_search is intentionally left out: answers should come from our own
+# documents only, so questions and document contents never leave the machine.
+# Add "web_search" here if the team wants an online fallback.
+enabled = ["knowledge_search", "knowledge_sql", "scan_chunks", "think"]
+
+[tools.storage]
+default_backend = "sqlite"          # FTS5 full-text search, no extra install.
+
+[security]
+profile = "personal"
+
+[analytics]
+enabled = false
+choice_recorded = true
