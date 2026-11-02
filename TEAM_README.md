@@ -142,6 +142,53 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 The server is OpenAI-compatible, exposes 97 routes, and supports streaming.
 Stop it with `uv run jarvis stop`.
 
+## The Floras Auto Jarvis interface
+
+A single branded page, served by the local API server at `/floras.html`,
+that acts as the team's front door: cards for all ten agents with their
+setup and run commands ready to copy, live status chips for the server,
+engine, model, and active agent, and a chat panel that streams from
+whichever agent the active config selects. The full OpenJarvis GUI stays
+available at `/` on the same server.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `frontend/public/floras.html` | The page. Vite copies it into `src/openjarvis/server/static/` at build time, and the server serves it at `/floras.html`. |
+| `scripts/floras-auto/start-interface.sh` | Builds the frontend once if needed, starts the server in the background, and prints or opens the address. |
+
+Start it:
+
+```bash
+scripts/floras-auto/start-interface.sh
+```
+
+Then open http://127.0.0.1:8000/floras.html on that machine. Stop with
+`uv run jarvis stop`.
+
+### How it works, and its limits
+
+- The page is plain HTML and JavaScript with no build step of its own. It
+  reads `/health`, `/v1/info`, and `/v1/models` for the status chips and
+  posts to the OpenAI-compatible `/v1/chat/completions` endpoint with
+  streaming for the chat.
+- **The chat talks to the active agent only.** The chat endpoint has no
+  per-request agent switch, so the server answers with the agent from the
+  config that was active when it started. To use a different agent, run its
+  setup script and restart the server. The cards exist so the team does not
+  have to remember those commands.
+- The server binds to the local machine. Do not open it to the shop network
+  without putting authentication in front of it.
+- Any `uv run jarvis` or GUI first launch may still show the upstream
+  leaderboard dialog at `/`. The Floras page does not.
+
+Verified in the sandbox on 2026-11-02: the start script found the built
+page, started the server, and reported the address; in a headless browser
+the page showed all ten cards, the status chips read server online with the
+engine, model, and agent, a message sent from the chat panel streamed back
+a reply from the stand-in engine, and the console showed no errors.
+
 ## Scheduled monitor: morning auction review
 
 Our first configured agent. Every morning it reads the overnight notes the
