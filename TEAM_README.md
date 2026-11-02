@@ -12,7 +12,7 @@ Evaluation baseline: upstream `main` at commit `ef8d459`, verified 2026-11-02.
 
 | Branch | Purpose |
 |---|---|
-| `main` | Mirror of upstream. Do not commit here. |
+| `main` | Upstream plus these team notes. Receives merges from `floras-auto-dev` only. |
 | `floras-auto-dev` | Our working line. Feature branches merge into this. |
 | `feature/<short-name>` | One branch per task, opened as a PR into `floras-auto-dev`. |
 
