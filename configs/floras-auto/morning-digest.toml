@@ -1,0 +1,67 @@
+# Floras Auto — Morning Digest
+#
+# Spoken daily briefing for the team: new purchases and arrivals, emails that
+# need a reply, today's calendar, and weather where it affects transport.
+# Everything runs locally: the model on Ollama, the voice on Kokoro.
+#
+# Install with:  scripts/floras-auto/setup-morning-digest.sh
+# Or by hand:    cp configs/floras-auto/morning-digest.toml ~/.openjarvis/config.toml
+#                cp configs/floras-auto/personas/floras-auto.md ~/.openjarvis/prompts/personas/
+#
+# Based on the upstream morning-digest-linux preset
+# (configs/openjarvis/examples/morning-digest-linux.toml).
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+host = "http://localhost:11434"     # Point at another machine on the shop network if needed.
+
+[intelligence]
+# qwen3.5:9b needs roughly 6 GB of RAM. Use qwen3.5:4b on smaller machines.
+default_model = "qwen3.5:9b"
+temperature = 0.3
+
+[agent]
+default_agent = "simple"
+
+[tools]
+# web_search, shell_exec, and code_interpreter are left out on purpose:
+# the digest only needs to collect from connected sources and speak.
+enabled = ["digest_collect", "text_to_speech"]
+
+# ─── Morning Digest ─────────────────────────────────────────
+
+[digest]
+enabled = true
+schedule = "0 6 * * 1-6"            # 6 AM, Monday to Saturday
+timezone = "America/New_York"       # CHANGE to the dealership's timezone
+persona = "floras-auto"             # configs/floras-auto/personas/floras-auto.md
+honorific = "team"
+tts_backend = "kokoro"              # Local neural voice, no API key. Needs: uv sync --extra voice
+voice_id = "af_heart"               # Kokoro voice. Try "am_michael" for a male voice.
+voice_speed = 1.0
+
+sections = ["messages", "calendar", "world"]
+
+[digest.messages]
+# "imap" is the generic IMAP connector. It maps yahoo.com, outlook.com, and
+# gmail.com addresses to the right server automatically. Connect it through
+# the GUI's Data Sources page or the setup script.
+sources = ["imap"]
+
+[digest.calendar]
+# Optional. Requires `jarvis connect gdrive` (one Google OAuth covers Calendar).
+sources = ["gcalendar"]
+
+[digest.world]
+# weather needs ~/.openjarvis/connectors/weather.json (OpenWeatherMap key).
+# news_rss needs ~/.openjarvis/connectors/news_rss.json (list of feeds).
+sources = ["weather", "news_rss"]
+
+[security]
+profile = "personal"
+
+[analytics]
+enabled = false
+choice_recorded = true
