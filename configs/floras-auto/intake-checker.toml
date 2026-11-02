@@ -1,0 +1,56 @@
+# Floras Auto — Unit Intake Checker (native ReAct agent)
+#
+# Works one unit at a time: searches the notes, walks a fixed intake
+# checklist (title, odometer, keys, transport, yard location, parts, photos,
+# damage), writes the checklist to the intake folder, and reports the open
+# items. The ReAct agent shows every Thought, Action, and Observation, so a
+# colleague can audit how it reached each mark. The model runs on Ollama.
+#
+# Install with:  scripts/floras-auto/setup-intake-checker.sh [NOTES_DIR] [INTAKE_DIR]
+# Or by hand:    cp configs/floras-auto/intake-checker.toml ~/.openjarvis/config.toml
+#                mkdir -p ~/.openjarvis/agents/native_react
+#                cp configs/floras-auto/prompts/native_react_system_prompt.md ~/.openjarvis/agents/native_react/system_prompt.md
+#                uv run jarvis memory index ~/FlorasAuto/overnight-notes
+#
+# Use:           uv run jarvis ask "Intake checklist for the IAA SUV"
+#                uv run jarvis chat
+#
+# The ReAct agent builds its own system prompt from
+# ~/.openjarvis/agents/native_react/system_prompt.md and ignores the
+# [memory_files] persona, so the identity lives in that override file.
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+# Uncomment and set when Ollama runs on another machine on the shop network.
+# host = "http://192.168.1.50:11434"
+
+[intelligence]
+# The ReAct text format needs a model that follows instructions closely.
+# qwen3.5:9b is the minimum worth using; qwen3.5:4b drifts from the format.
+default_model = "qwen3.5:9b"
+temperature = 0.1                   # Keep the Thought/Action format stable.
+
+[agent]
+default_agent = "native_react"
+max_turns = 12                      # Enough for several searches plus the write.
+context_from_memory = false         # Facts come through visible memory_search calls.
+
+[memory]
+default_backend = "sqlite"          # memory_search reads memory.db.
+
+[tools]
+# No shell, no code execution, no web: the checker only reads notes,
+# does arithmetic, and writes one checklist file.
+enabled = ["memory_search", "file_read", "file_write", "calculator", "think"]
+
+[security]
+profile = "personal"
+# file_read and file_write refuse anything outside these folders. The setup
+# script replaces them with the notes and intake folders you choose.
+allowed_dirs = ["~/FlorasAuto/overnight-notes", "~/FlorasAuto/intake"]
+
+[analytics]
+enabled = false
+choice_recorded = true
