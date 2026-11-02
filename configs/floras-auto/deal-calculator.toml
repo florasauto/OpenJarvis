@@ -1,0 +1,56 @@
+# Floras Auto — Deal Calculator (native OpenHands / CodeAct agent)
+#
+# Works out the numbers on a unit before and after an auction: landed cost
+# with buyer-fee tiers, transport, and tax; break-even and target resale;
+# what-if scenarios for different bids. The agent writes small Python
+# programs and runs them in a locked-down interpreter, so every figure is
+# computed rather than guessed, and the code is visible in the trace. It
+# can read a notes file for inputs and save a deal sheet. The model runs on
+# Ollama.
+#
+# Install with:  scripts/floras-auto/setup-deal-calculator.sh [NOTES_DIR] [DEALS_DIR]
+# Or by hand:    cp configs/floras-auto/deal-calculator.toml ~/.openjarvis/config.toml
+#                mkdir -p ~/.openjarvis/agents/native_openhands
+#                cp configs/floras-auto/prompts/native_openhands_system_prompt.md \
+#                   ~/.openjarvis/agents/native_openhands/system_prompt.md
+#
+# Use:           uv run jarvis ask "Landed cost on the IAA SUV at a 4200 bid?"
+#
+# The agent builds its own system prompt from
+# ~/.openjarvis/agents/native_openhands/system_prompt.md and ignores the
+# [memory_files] persona. Fee schedules live in that override file; edit
+# them there when the auction houses change their rates.
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+# Uncomment and set when Ollama runs on another machine on the shop network.
+# host = "http://192.168.1.50:11434"
+
+[intelligence]
+# Code generation benefits from the larger model. qwen3.5:4b is usable for
+# simple arithmetic but makes more mistakes in multi-step calculations.
+default_model = "qwen3.5:9b"
+temperature = 0.1                   # Deterministic code and figures.
+
+[agent]
+default_agent = "native_openhands"
+max_turns = 6                       # Default is 3; compute, save, and answer need more.
+context_from_memory = false
+
+[tools]
+# code_interpreter runs Python in a hardened subprocess: only json, math,
+# and time may be imported, and open/exec/eval are blocked. Inputs come in
+# through file_read; outputs go out through file_write. No shell, no web.
+enabled = ["code_interpreter", "file_read", "file_write", "calculator", "think"]
+
+[security]
+profile = "personal"
+# file_read and file_write refuse anything outside these folders. The setup
+# script replaces them with the notes and deal-sheet folders you choose.
+allowed_dirs = ["~/FlorasAuto/overnight-notes", "~/FlorasAuto/deals"]
+
+[analytics]
+enabled = false
+choice_recorded = true
