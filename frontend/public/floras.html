@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floras Auto Jarvis</title>
+<meta name="description" content="Floras Auto's front door to the local Jarvis assistants: pick an agent, chat with the running one, and see the setup command for each.">
+<style>
+  :root {
+    --bg: #f4f6f8; --panel: #ffffff; --ink: #14202b; --muted: #5b6b7a; --line: #d9e0e6;
+    --accent: #0a6c74; --accent-ink: #ffffff; --ok: #1f7a3a; --warn: #b7791f; --bad: #b3261e;
+    --chip: #e7f3f4; --user: #0a6c74; --assistant: #eef2f5; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151b; --panel: #171f27; --ink: #e8eef3; --muted: #9fb0bf; --line: #2a3640;
+      --accent: #3fb3bd; --accent-ink: #0b1216; --chip: #1c2a2f; --user: #2a8f98; --assistant: #1f2a33;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151b; --panel: #171f27; --ink: #e8eef3; --muted: #9fb0bf; --line: #2a3640;
+    --accent: #3fb3bd; --accent-ink: #0b1216; --chip: #1c2a2f; --user: #2a8f98; --assistant: #1f2a33;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
+  .brand span { color: var(--muted); font-size: 13px; }
+  .status { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--chip); color: var(--ink); white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); }
+  main { display: grid; grid-template-columns: 1fr; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  @media (min-width: 1000px) { main { grid-template-columns: 3fr 2fr; align-items: start; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  h2 { margin: 0 0 4px; font-size: 16px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--panel); }
+  .card h3 { margin: 0; font-size: 15px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .kind { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .card p { margin: 0; color: var(--muted); font-size: 13px; }
+  .cmd { font-family: var(--mono); font-size: 12px; background: var(--assistant); border: 1px solid var(--line); border-radius: 8px; padding: 8px; overflow-x: auto; white-space: pre; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .chat { display: flex; flex-direction: column; gap: 10px; min-height: 420px; }
+  .log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px; max-height: 60vh; }
+  .msg { padding: 10px 12px; border-radius: 10px; max-width: 92%; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user); color: #fff; }
+  .msg.assistant { align-self: flex-start; background: var(--assistant); }
+  .msg.system { align-self: center; color: var(--muted); font-size: 12px; background: transparent; }
+  form { display: flex; gap: 8px; }
+  textarea { flex: 1; font: inherit; resize: vertical; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+  .meta { font-size: 12px; color: var(--muted); }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .note { font-size: 12px; color: var(--muted); border-left: 3px solid var(--accent); padding-left: 10px; margin-top: 12px; }
+  @media (max-width: 600px) { header { flex-direction: column; align-items: flex-start; } .status { font-size: 12px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>Floras Auto · Jarvis</h1><span>local assistants for the team</span></div>
+  <div class="status">
+    <span class="chip"><span class="dot" id="dot-server"></span><span id="txt-server">checking server…</span></span>
+    <span class="chip"><span class="dot" id="dot-engine"></span><span id="txt-engine">engine</span></span>
+    <span class="chip" id="chip-agent">agent: —</span>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>Agents</h2>
+    <p class="sub">Each agent has its own setup script. Running one switches the machine's active config, so run the setup for the agent you want, then restart the server. The chat panel talks to whichever agent is active now.</p>
+    <div class="grid" id="agents"></div>
+    <div class="note">Every agent runs on this machine with a local model. Nothing you type here leaves the building unless an agent's notes say otherwise.</div>
+  </section>
+
+  <section class="chat">
+    <h2>Chat with the active agent</h2>
+    <p class="sub" id="chat-sub">Connects to this server's chat endpoint.</p>
+    <div class="log" id="log"></div>
+    <form id="form">
+      <textarea id="input" placeholder="Ask the active agent… (Enter to send, Shift+Enter for a new line)" required></textarea>
+      <button class="primary" id="send" type="submit">Send</button>
+    </form>
+    <div class="row">
+      <button type="button" id="clear">Clear</button>
+      <a href="/" style="align-self:center;font-size:13px">Open the full OpenJarvis GUI</a>
+    </div>
+    <details>
+      <summary>How this page works</summary>
+      <p class="meta">It is a single static page served by the OpenJarvis API server at <code>/floras.html</code>. Status comes from <code>/health</code>, <code>/v1/info</code>, and <code>/v1/models</code>. Chat uses the OpenAI-compatible <code>/v1/chat/completions</code> endpoint with streaming. The server decides which agent answers, based on the active config.</p>
+    </details>
+  </section>
+</main>
+
+<script>
+const AGENTS = [
+  { id: "chat-simple", name: "Simple chat", kind: "on demand", agent: "simple",
+    what: "General team assistant: draft messages, explain auction and title terms, clean up notes, quick arithmetic. No tools.",
+    setup: "scripts/floras-auto/setup-chat-simple.sh", use: "uv run jarvis chat" },
+  { id: "office", name: "Office assistant", kind: "on demand", agent: "orchestrator",
+    what: "Searches the indexed notes with citations, does fee and margin math, stores reminders, drafts files in a fenced folder.",
+    setup: "scripts/floras-auto/setup-office-assistant.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/drafts", use: "uv run jarvis chat" },
+  { id: "deep-research", name: "Deep research", kind: "on demand", agent: "research loop",
+    what: "Cited answers over the dealership's documents: policies, vendor lists, title procedures. Ingest PDFs and notes first.",
+    setup: "scripts/floras-auto/setup-deep-research.sh ~/FlorasAuto/documents", use: "uv run jarvis ask --research \"…\"" },
+  { id: "intake", name: "Unit intake checker", kind: "on demand", agent: "native_react",
+    what: "Walks a fixed intake checklist for one unit, writes it to the intake folder, reports open items. Every step is visible.",
+    setup: "scripts/floras-auto/setup-intake-checker.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/intake", use: "uv run jarvis ask \"Intake checklist for the IAA SUV\"" },
+  { id: "deal", name: "Deal calculator", kind: "on demand", agent: "native_openhands",
+    what: "Landed cost with fee tiers, transport, tax; break-even and what-if bids, computed in Python. Saves deal sheets.",
+    setup: "scripts/floras-auto/setup-deal-calculator.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/deals", use: "uv run jarvis ask \"Landed cost on the IAA SUV at a 4200 bid\"" },
+  { id: "code", name: "Code assistant", kind: "on demand", agent: "orchestrator",
+    what: "Help with the team's own scripts. Python runs in a locked-down interpreter; file access fenced to one folder; no shell.",
+    setup: "scripts/floras-auto/setup-code-assistant.sh ~/FlorasAuto/scripts", use: "cd ~/FlorasAuto/scripts && uv run jarvis chat" },
+  { id: "monitor", name: "Scheduled monitor", kind: "scheduled", agent: "operative",
+    what: "Every morning, reviews overnight auction notes, lists units by source with title status, flags follow-up calls.",
+    setup: "scripts/floras-auto/setup-scheduled-monitor.sh ~/FlorasAuto/overnight-notes", use: "uv run jarvis scheduler start" },
+  { id: "digest", name: "Morning digest", kind: "scheduled", agent: "morning_digest",
+    what: "Spoken briefing at 6 AM from the team mailbox, calendar, weather, and news. Local voice, no API key.",
+    setup: "scripts/floras-auto/setup-morning-digest.sh", use: "uv run jarvis digest --fresh" },
+  { id: "watch", name: "Title and transport watch", kind: "continuous", agent: "monitor_operative",
+    what: "Every 30 minutes, re-reads the notes and maintains a status page of titles pending, transport due, and changes.",
+    setup: "scripts/floras-auto/setup-title-watch.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/status", use: "uv run jarvis agents daemon" },
+  { id: "recap", name: "Weekly auction recap", kind: "scheduled", agent: "operative (operator)",
+    what: "Fridays at 5 PM: units by source, titles resolved and pending, transport spend, parts promises, changes since last week.",
+    setup: "scripts/floras-auto/setup-weekly-recap.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/recaps", use: "uv run jarvis scheduler start" },
+];
+
+const grid = document.getElementById("agents");
+for (const a of AGENTS) {
+  const card = document.createElement("div"); card.className = "card";
+  card.innerHTML = `
+    <h3><span>${a.name}</span><span class="kind">${a.kind}</span></h3>
+    <p>${a.what}</p>
+    <div class="cmd" title="Setup command">${a.setup}</div>
+    <div class="row">
+      <button type="button" data-copy="${encodeURIComponent(a.setup)}">Copy setup</button>
+      <button type="button" data-copy="${encodeURIComponent(a.use)}">Copy run</button>
+      <span class="meta" style="align-self:center">agent: ${a.agent}</span>
+    </div>`;
+  grid.appendChild(card);
+}
+grid.addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-copy]"); if (!b) return;
+  const text = decodeURIComponent(b.dataset.copy);
+  try { await navigator.clipboard.writeText(text); const old = b.textContent; b.textContent = "Copied"; setTimeout(() => b.textContent = old, 1200); }
+  catch { window.prompt("Copy this command:", text); }
+});
+
+// ---- status -------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+let model = "";
+async function refreshStatus() {
+  try {
+    const h = await fetch("/health", { cache: "no-store" });
+    $("dot-server").className = "dot " + (h.ok ? "ok" : "bad");
+    $("txt-server").textContent = h.ok ? "server online" : "server error";
+  } catch { $("dot-server").className = "dot bad"; $("txt-server").textContent = "server offline"; }
+  try {
+    const info = await (await fetch("/v1/info", { cache: "no-store" })).json();
+    model = info.model || model;
+    $("chip-agent").textContent = "agent: " + (info.agent || "server default");
+    $("txt-engine").textContent = (info.engine || "engine") + (info.model ? " · " + info.model : "");
+    $("dot-engine").className = "dot " + (info.engine ? "ok" : "warn");
+  } catch { $("dot-engine").className = "dot warn"; $("txt-engine").textContent = "engine unknown"; }
+  if (!model) {
+    try { const m = await (await fetch("/v1/models", { cache: "no-store" })).json(); model = (m.data && m.data[0] && m.data[0].id) || ""; if (model) $("txt-engine").textContent += " · " + model; } catch {}
+  }
+}
+refreshStatus(); setInterval(refreshStatus, 15000);
+
+// ---- chat ---------------------------------------------------------------
+const log = $("log"), input = $("input"), form = $("form"), send = $("send");
+const history = [];
+function add(role, text) {
+  const d = document.createElement("div"); d.className = "msg " + role; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+}
+add("system", "Say hello to check the engine is answering.");
+input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+$("clear").addEventListener("click", () => { history.length = 0; log.innerHTML = ""; add("system", "Conversation cleared."); });
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = input.value.trim(); if (!text) return;
+  input.value = ""; send.disabled = true;
+  history.push({ role: "user", content: text }); add("user", text);
+  const out = add("assistant", "…");
+  try {
+    const res = await fetch("/v1/chat/completions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: model || "default", messages: history, stream: true }),
+    });
+    if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "", full = "";
+    out.textContent = "";
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim(); if (data === "[DONE]") continue;
+        try { const j = JSON.parse(data); const delta = j.choices && j.choices[0] && j.choices[0].delta; if (delta && delta.content) { full += delta.content; out.textContent = full; log.scrollTop = log.scrollHeight; } } catch {}
+      }
+    }
+    if (!full) out.textContent = "(no reply: is an engine running?)";
+    history.push({ role: "assistant", content: full });
+  } catch (err) {
+    out.textContent = "Could not reach the server: " + err.message + ". Start it with: uv run jarvis serve";
+  } finally { send.disabled = false; input.focus(); }
+});
+</script>
+</body>
+</html>
