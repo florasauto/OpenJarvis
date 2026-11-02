@@ -473,6 +473,60 @@ fence, stored a dated summary, and wrote the status page; a second run found
 the first run's summary in memory. Real judgement about deadlines still
 needs a machine with Ollama.
 
+## Office assistant: multi-step help with tools
+
+The orchestrator is the agent that picks tools itself, turn by turn. Ours is
+set up as an office assistant: it looks things up in the indexed notes with
+a cited search, does fee and margin arithmetic with a calculator, stores
+reminders, and drafts emails or checklists as files in a shared folder. No
+shell, no code execution, no web. The model runs on Ollama.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/office-assistant.toml` | Config with the orchestrator agent, six tools, and file access fenced to the notes and drafts folders. |
+| `configs/floras-auto/personas/office/SOUL.md` | Tells the assistant when to use each tool and how to report. Installed to `~/.openjarvis/personas/floras-office/`. |
+| `scripts/floras-auto/setup-office-assistant.sh` | Installs the config and persona and indexes the notes folder. |
+
+Set it up and start a session:
+
+```bash
+scripts/floras-auto/setup-office-assistant.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/drafts
+```
+
+```bash
+uv run jarvis chat
+```
+
+Re-index whenever notes change. For this agent `jarvis memory index` is the
+right command, because the `memory_search` tool reads `memory.db`:
+
+```bash
+uv run jarvis memory index ~/FlorasAuto/overnight-notes
+```
+
+### How it differs from the other agents
+
+- The **code assistant** is the same orchestrator agent with the Python
+  interpreter instead of memory search. Use that one for scripts, this one
+  for office work.
+- The **deep research** agent gives longer, cited answers over the full
+  document set in `knowledge.db`. This one gives quick lookups over notes in
+  `memory.db` and can act on them.
+- Memory is shared across the Floras agents on one machine, so the title
+  watch's stored summaries also show up in this assistant's searches. That
+  is useful, but keep it in mind when reading results.
+- Context injection is off; the agent reaches the notes only through the
+  search tool, so every fact it uses is visible as a tool call.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine that drives a
+three-step request: the setup script installed the config and persona and
+indexed a sample notes file; one request ran memory search (found the
+note), calculator (correct total), and file write (draft landed in the
+drafts folder) across four turns. Real reasoning still needs a machine with
+Ollama.
+
 ## Known quirks
 
 - **`uv sync` removes the Rust extension.** Any `uv sync` rebuilds the venv
