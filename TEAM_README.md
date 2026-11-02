@@ -142,6 +142,53 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 The server is OpenAI-compatible, exposes 97 routes, and supports streaming.
 Stop it with `uv run jarvis stop`.
 
+## Scheduled monitor: morning auction review
+
+Our first configured agent. Every morning it reads the overnight notes the
+team drops into a folder, lists each unit bought from Edge Pipeline, IAA, and
+Salvato with its pickup or title status, flags follow-up calls, and stores a
+dated summary so the next run can compare against it. It only reads locally
+indexed documents, so nothing leaves the machine.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/scheduled-monitor.toml` | Config installed to `~/.openjarvis/config.toml`. |
+| `scripts/floras-auto/setup-scheduled-monitor.sh` | One-shot setup: installs the config, indexes notes, registers the task. |
+
+Set it up:
+
+```bash
+scripts/floras-auto/setup-scheduled-monitor.sh ~/FlorasAuto/overnight-notes "0 7 * * 1-6"
+```
+
+Then run it once to test, and start the scheduler to honour the schedule:
+
+```bash
+uv run jarvis scheduler run-task operative
+```
+
+```bash
+uv run jarvis scheduler start
+```
+
+The scheduler runs in the foreground. On a shop machine, run it under a
+service manager or a scheduled task so it survives reboots.
+
+The upstream guide for this preset is out of date. The real command syntax is:
+
+| Documented | Actual |
+|---|---|
+| `scheduler create --prompt X --schedule Y` | `scheduler create "X" --type cron --value "Y"` |
+| `scheduler run <id>` | `scheduler run-task <agent-name>` |
+| `scheduler status <id>` | `scheduler logs <id>` |
+| `scheduler delete <id>` | `scheduler cancel <id>` |
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine: task creation,
+an immediate run through the operative agent, and the run log all worked.
+The model's actual reasoning still needs checking on a machine with Ollama.
+
 ## Known quirks
 
 - `jarvis config show` reports `Tools: none` even when the config enables

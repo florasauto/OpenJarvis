@@ -1,0 +1,43 @@
+# Floras Auto — Scheduled Monitor
+#
+# Operative agent that reviews overnight auction and purchase notes every
+# morning, flags follow-ups, and keeps a dated summary in local memory so
+# each run can compare against the previous one.
+#
+# Install with:  scripts/floras-auto/setup-scheduled-monitor.sh
+# Or by hand:    cp configs/floras-auto/scheduled-monitor.toml ~/.openjarvis/config.toml
+#
+# Based on the upstream scheduled-monitor preset
+# (configs/openjarvis/examples/scheduled-monitor.toml).
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+# Uncomment and set when Ollama runs on another machine on the shop network.
+# host = "http://192.168.1.50:11434"
+
+[intelligence]
+# qwen3.5:9b needs roughly 6 GB of RAM. Use qwen3.5:4b on smaller machines.
+default_model = "qwen3.5:9b"
+temperature = 0.3                   # Low temperature keeps daily summaries consistent.
+
+[agent]
+default_agent = "operative"
+max_turns = 20
+context_from_memory = true          # Inject notes from earlier runs into context.
+
+[tools]
+# web_search is intentionally left out: the monitor should only read the
+# documents the team indexes, so nothing leaves the local machine.
+enabled = ["knowledge_search", "knowledge_sql", "scan_chunks", "memory_store", "memory_search", "think"]
+
+[tools.storage]
+default_backend = "sqlite"
+
+[security]
+profile = "personal"
+
+[analytics]
+enabled = false
+choice_recorded = true
