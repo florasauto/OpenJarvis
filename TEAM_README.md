@@ -360,7 +360,63 @@ tool call per request: Python execution returned the right result, reads and
 writes respected the fence, and the agent had no shell tool available. Real
 code quality still needs a machine with Ollama.
 
+## Simple chat: a general assistant for the team
+
+A plain assistant with no tools, no file access, and no web: drafting
+customer and vendor messages, explaining auction and title terms, cleaning up
+notes, quick arithmetic. It carries a Floras Auto identity through a persona
+file, and memory injection is off so one person's chat never leaks into
+another's on a shared machine.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/chat-simple.toml` | Config installed to `~/.openjarvis/config.toml`. |
+| `configs/floras-auto/personas/chat/SOUL.md` | The assistant's identity and rules. Installed to `~/.openjarvis/personas/floras-auto/`. |
+| `configs/floras-auto/personas/chat/USER.md` | Describes the team. Installed once and then kept local, so edit the installed copy. |
+| `scripts/floras-auto/setup-chat-simple.sh` | Installs the config and the persona. |
+
+Set it up and use it:
+
+```bash
+scripts/floras-auto/setup-chat-simple.sh
+```
+
+```bash
+uv run jarvis chat
+```
+
+```bash
+uv run jarvis serve
+```
+
+The server binds to the local machine only. Do not open it to the shop
+network without putting authentication in front of it.
+
+### How the identity works
+
+The `[memory_files] persona_name` setting makes the prompt builder read
+`SOUL.md`, `MEMORY.md`, and `USER.md` from `~/.openjarvis/personas/<name>/`
+and append them to the system prompt. The `[agent] system_prompt` setting
+that the config schema advertises is not read by the CLI, so use the persona
+mechanism instead. Verified in the sandbox: the persona text reached the
+engine's system prompt through `jarvis ask`, the API server, and `jarvis chat`.
+
+The upstream guide mentions an `OPENJARVIS_MODEL` environment variable. It
+does not exist in this version; use `jarvis ask -m <model>` or edit the config.
+
 ## Known quirks
+
+- **`uv sync` removes the Rust extension.** Any `uv sync` rebuilds the venv
+  without the locally built `openjarvis_rust` package, and the memory backend
+  and rate limiter then fall back with warnings. Rebuild after every sync:
+
+  ```bash
+  uv run maturin develop --manifest-path rust/crates/openjarvis-python/Cargo.toml
+  ```
+
+  The Floras Auto setup scripts that run `uv sync` now do this themselves.
 
 - `jarvis config show` reports `Tools: none` even when the config enables
   tools. The tools still register (`jarvis tool list` shows them). Display

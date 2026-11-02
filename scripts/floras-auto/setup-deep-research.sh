@@ -40,6 +40,9 @@ cd "$REPO_ROOT"
 echo "==> Installing PDF extra and Word support"
 uv sync --extra dev --extra server --extra pdf
 uv pip install --quiet python-docx     # no upstream extra covers .docx yet
+# uv sync drops the locally built Rust extension; rebuild it or the memory
+# backend and rate limiter fall back with warnings.
+uv run maturin develop --manifest-path rust/crates/openjarvis-python/Cargo.toml
 
 echo "==> Installing config to $CONFIG_DST"
 mkdir -p "$(dirname "$CONFIG_DST")"
