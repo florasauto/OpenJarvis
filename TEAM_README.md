@@ -189,6 +189,72 @@ Verified in the sandbox on 2026-11-02 with a stand-in engine: task creation,
 an immediate run through the operative agent, and the run log all worked.
 The model's actual reasoning still needs checking on a machine with Ollama.
 
+## Morning digest: spoken team briefing
+
+A spoken briefing for the start of the business day: new purchases and
+arrivals, emails that need a reply, today's calendar, and weather where it
+affects transport. The model runs on Ollama and the voice on Kokoro, so no
+cloud API key is needed. Sources are collected from connectors the team
+chooses to connect; anything not connected is simply skipped.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/morning-digest.toml` | Config installed to `~/.openjarvis/config.toml`. |
+| `configs/floras-auto/personas/floras-auto.md` | Briefing style: professional, addresses the team, closes with action items. |
+| `scripts/floras-auto/setup-morning-digest.sh` | Installs the voice extra, config, and persona; offers to connect the mailbox, weather, and news feeds. |
+
+Set it up:
+
+```bash
+scripts/floras-auto/setup-morning-digest.sh
+```
+
+Then generate the first briefing as text, and with audio once it reads well:
+
+```bash
+uv run jarvis digest --fresh --text-only
+```
+
+```bash
+uv run jarvis digest --fresh
+```
+
+Before the first run, edit `timezone` in the config. It ships as
+`America/New_York` as a placeholder.
+
+### Sources
+
+| Section | Source | How to connect |
+|---|---|---|
+| messages | `imap` | Generic IMAP. Works with the Yahoo team mailbox and detects the server from the address. Needs an app password, not the login password. The setup script prompts for it, or use the GUI's Data Sources page. |
+| calendar | `gcalendar` | `uv run jarvis connect gdrive`, one Google OAuth flow. Optional. |
+| world | `weather` | Free OpenWeatherMap key in `~/.openjarvis/connectors/weather.json`. The script prompts for it. |
+| world | `news_rss` | Feed list in `~/.openjarvis/connectors/news_rss.json`. The script writes a starter list. |
+
+The scheduled monitor and the morning digest use different configs. The
+monitor's config is the one with `default_agent = "operative"` and the
+scheduler task; the digest's has the `[digest]` section. Installing one
+backs up and replaces the other in `~/.openjarvis/config.toml`. To run both
+on one machine, merge the two files by hand: keep the monitor's `[agent]`
+and `[tools]` lists and add the digest's `[digest]` sections plus
+`digest_collect` and `text_to_speech` to `tools.enabled`.
+
+### Quirks found in the digest CLI
+
+- `jarvis digest --schedule` with no value errors. Pass an empty string to
+  show status: `jarvis digest --schedule ""`.
+- `jarvis digest --text-only` still prints "Playing audio..." lines. Harmless
+  when no speech backend is installed.
+- `jarvis connect imap` runs the OAuth flow and fails, because the CLI treats
+  the IMAP connectors as OAuth sources. Use the setup script or the GUI.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine: config parses,
+the four sources are recognised and reported as not connected, the collector
+builds the briefing prompt, and the engine is called. Voice output and the
+real briefing text still need a machine with Ollama and the voice extra.
+
 ## Known quirks
 
 - `jarvis config show` reports `Tools: none` even when the config enables
