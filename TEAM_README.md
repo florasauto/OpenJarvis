@@ -579,6 +579,62 @@ and a final answer; the engine's system prompt contained the override, the
 intake path, and the tool list. Real checklist judgement still needs a
 machine with Ollama.
 
+## Deal calculator: a CodeAct agent that computes every figure
+
+The native OpenHands agent writes small Python programs and runs them, so
+numbers are computed rather than guessed and the code is visible in the
+trace. Ours is a deal calculator: landed cost with buyer-fee tiers,
+transport, tax, and title fee; break-even and target resale; what-if tables
+for different bids. It can read a notes file for inputs and save a deal
+sheet. The fee schedule lives in its prompt, where the office can edit it
+when the auction houses change their rates.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/deal-calculator.toml` | Config with the `native_openhands` agent, five tools, and file access fenced to the notes and deals folders. |
+| `configs/floras-auto/prompts/native_openhands_system_prompt.md` | The agent's prompt: tool format, the fee schedule, what to produce, and the rules. |
+| `scripts/floras-auto/setup-deal-calculator.sh` | Installs the config and the prompt with the folder paths written in. |
+
+Set it up and ask:
+
+```bash
+scripts/floras-auto/setup-deal-calculator.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/deals
+```
+
+```bash
+uv run jarvis ask "Landed cost on the IAA SUV at a 4200 bid with 180 transport, and save a deal sheet"
+```
+
+### Things to know
+
+- **The fee schedule shipped is a placeholder.** The rates in the prompt are
+  illustrative. The office must replace them with the real IAA, Edge
+  Pipeline, and Salvato schedules before anyone relies on a figure. Edit
+  `~/.openjarvis/agents/native_openhands/system_prompt.md` or the repo copy
+  and rerun the script.
+- **The interpreter is locked down on purpose.** Python may import only
+  `json`, `math`, and `time`; `open`, `exec`, `eval`, and `input` are
+  blocked, and it runs in a subprocess with a timeout. Inputs come in
+  through `file_read` and outputs go out through `file_write`, both fenced.
+  That means the agent cannot crunch a large CSV directly; for that, the
+  office assistant or a proper script is the better tool.
+- **The default turn limit is 3**, which is too few to compute, save, and
+  answer. The config raises it to 6.
+- **Same override caution as the intake checker.** This agent ignores the
+  persona files and builds its prompt from a machine-wide override at
+  `~/.openjarvis/agents/native_openhands/system_prompt.md`, which must keep
+  the `{tool_descriptions}` placeholder.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine that speaks
+the CodeAct format: the setup script installed the config and override;
+one request ran three turns, a Python block that printed the fee, tax, and
+landed cost, a file write that saved the deal sheet, and a final answer;
+the engine's prompt contained the override, the fee schedule, the deals
+path, and the tool list. Real code quality and arithmetic from the model
+still need a machine with Ollama.
+
 ## Known quirks
 
 - **`uv sync` removes the Rust extension.** Any `uv sync` rebuilds the venv
