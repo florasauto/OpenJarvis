@@ -1,0 +1,60 @@
+# Floras Auto — Office Assistant (orchestrator agent)
+#
+# A multi-step helper for the office: looks things up in the indexed notes,
+# does fee and margin arithmetic step by step, stores reminders, and drafts
+# emails or checklists as files in a shared folder. The orchestrator agent
+# picks the tools itself, turn by turn. The model runs on Ollama, so nothing
+# leaves the shop.
+#
+# Install with:  scripts/floras-auto/setup-office-assistant.sh [NOTES_DIR] [DRAFTS_DIR]
+# Or by hand:    cp configs/floras-auto/office-assistant.toml ~/.openjarvis/config.toml
+#                mkdir -p ~/.openjarvis/personas/floras-office
+#                cp configs/floras-auto/personas/office/SOUL.md ~/.openjarvis/personas/floras-office/
+#                uv run jarvis memory index ~/FlorasAuto/overnight-notes
+#
+# Use it through chat, which confirms sensitive tool calls (this config has
+# none, but it keeps the habit):
+#                uv run jarvis chat
+#
+# Based on the upstream code-assistant preset, which is the orchestrator
+# preset (configs/openjarvis/examples/code-assistant.toml).
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+# Uncomment and set when Ollama runs on another machine on the shop network.
+# host = "http://192.168.1.50:11434"
+
+[intelligence]
+# qwen3.5:9b needs roughly 6 GB of RAM. Use qwen3.5:4b on smaller machines.
+default_model = "qwen3.5:9b"
+temperature = 0.3
+
+[agent]
+default_agent = "orchestrator"      # Multi-turn, picks tools itself.
+max_turns = 10
+# Off: the memory_search tool gives the agent explicit, cited access to the
+# indexed notes, which is clearer than silent context injection.
+context_from_memory = false
+
+[memory]
+default_backend = "sqlite"          # memory_search / memory_store read and write memory.db.
+
+[memory_files]
+persona_name = "floras-office"      # ~/.openjarvis/personas/floras-office/SOUL.md
+
+[tools]
+# Deliberately left out: shell_exec (arbitrary commands), code_interpreter
+# (the code assistant has it), web_search (keeps questions local).
+enabled = ["memory_search", "memory_store", "calculator", "file_read", "file_write", "think"]
+
+[security]
+profile = "personal"
+# file_read and file_write refuse anything outside these folders. The setup
+# script replaces them with the notes and drafts folders you choose.
+allowed_dirs = ["~/FlorasAuto/overnight-notes", "~/FlorasAuto/drafts"]
+
+[analytics]
+enabled = false
+choice_recorded = true
