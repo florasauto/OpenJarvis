@@ -635,6 +635,73 @@ the engine's prompt contained the override, the fee schedule, the deals
 path, and the tool list. Real code quality and arithmetic from the model
 still need a machine with Ollama.
 
+## Weekly auction recap: a scheduled operator
+
+The operative agent is the persistent, scheduled agent, and the operators
+subsystem runs it from a TOML manifest. Ours is a weekly recap: every
+Friday at 5 PM it reads the week's notes, reads last week's recap, counts
+units by source, titles resolved and pending, transport spend, and parts
+promises, and rewrites a one-page recap with a JSON block of totals for the
+next run to compare against.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/operators/floras_weekly_recap.toml` | The operator manifest: cron schedule, tools, and the five-phase protocol. |
+| `configs/floras-auto/weekly-recap.toml` | Global config with the scheduler and operators enabled, sqlite memory, and file access fenced to the notes and recaps folders. |
+| `scripts/floras-auto/setup-weekly-recap.sh` | Installs the config and the manifest with the folder paths written into its prompt. |
+
+Set it up, test one run, then schedule it:
+
+```bash
+scripts/floras-auto/setup-weekly-recap.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/recaps
+```
+
+```bash
+uv run jarvis operators run floras_weekly_recap
+```
+
+```bash
+uv run jarvis operators activate floras_weekly_recap
+```
+
+```bash
+uv run jarvis scheduler start
+```
+
+### Things to know about operators
+
+- **Activate creates a duplicate task.** The manager creates the scheduler
+  task once under a random id and again under `operator:floras_weekly_recap`,
+  so the recap would run twice every Friday. After activating, run
+  `jarvis scheduler list` and cancel the task whose id is not the
+  `operator:` one. The setup script prints this reminder.
+- **`jarvis operators logs` crashes** in this version. Use
+  `jarvis scheduler logs operator:floras_weekly_recap` instead. Runs started
+  with `operators run` bypass the scheduler and do not appear there.
+- **The manifest's `max_turns` is ignored.** Operators take the turn limit
+  from `[agent] max_turns` in the global config, which this config sets to 20.
+- **Memory tools are not wired on this path.** `memory_store` and
+  `memory_retrieve` are built without a backend for operator ticks, so the
+  manifest uses `retrieval`, which is wired, plus `file_read` and
+  `file_write`. Week-over-week comparison comes from reading last week's
+  recap file, which is why the prompt starts there.
+- **State persistence was not observed in the sandbox.** Two runs created
+  a session row for the operator but saved no messages and no state. The
+  recap-file approach makes the agent independent of that, but the team
+  should confirm on a real run whether the restored-state feature works.
+- The manifest's prompt describes the two folders by name; the setup script
+  writes the real paths in when it installs the manifest.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine that drives
+file reads and writes: the setup script installed the config and the
+manifest with the paths substituted; `operators list` showed the operator
+with its Friday cron; one run read the notes file inside the fence and
+wrote the recap to the recaps folder; activation created the scheduler task
+with the correct next run, and the duplicate was found and cancelled. Real
+counting and judgement still need a machine with Ollama.
+
 ## Known quirks
 
 - **`uv sync` removes the Rust extension.** Any `uv sync` rebuilds the venv
