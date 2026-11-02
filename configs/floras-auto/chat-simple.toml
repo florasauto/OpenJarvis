@@ -1,0 +1,53 @@
+# Floras Auto — Simple Chat
+#
+# A general assistant for the whole team: drafting customer emails, explaining
+# auction and title terms, cleaning up notes, quick arithmetic. No tools, no
+# file access, no web. The model runs on Ollama, so nothing leaves the shop.
+#
+# Install with:  scripts/floras-auto/setup-chat-simple.sh
+# Or by hand:    cp configs/floras-auto/chat-simple.toml ~/.openjarvis/config.toml
+#                mkdir -p ~/.openjarvis/personas/floras-auto
+#                cp configs/floras-auto/personas/chat/*.md ~/.openjarvis/personas/floras-auto/
+#
+# Use:           uv run jarvis chat          # interactive, multi-turn
+#                uv run jarvis ask "..."     # one question
+#                uv run jarvis serve         # API + browser GUI on http://127.0.0.1:8000
+#
+# Based on the upstream chat-simple preset
+# (configs/openjarvis/examples/chat-simple.toml).
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+# Uncomment and set when Ollama runs on another machine on the shop network.
+# host = "http://192.168.1.50:11434"
+
+[intelligence]
+# qwen3.5:4b is fast and runs on modest hardware. Use qwen3.5:9b for better
+# drafting quality if the machine has 8 GB or more to spare.
+default_model = "qwen3.5:4b"
+temperature = 0.5
+
+[agent]
+default_agent = "simple"            # Single-turn, no tools.
+# Off for a shared machine: durable facts captured from one person's chat
+# would otherwise be injected into everyone else's conversations.
+context_from_memory = false
+
+[memory_files]
+# Loads ~/.openjarvis/personas/floras-auto/{SOUL,MEMORY,USER}.md into the
+# system prompt. SOUL.md sets the assistant's identity; USER.md describes
+# the team. The setup script installs both from configs/floras-auto/personas/chat/.
+persona_name = "floras-auto"
+
+[server]
+host = "127.0.0.1"                  # Local only. Do not expose on the network without auth.
+port = 8000
+
+[security]
+profile = "personal"
+
+[analytics]
+enabled = false
+choice_recorded = true
