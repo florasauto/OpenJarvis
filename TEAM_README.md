@@ -406,6 +406,73 @@ engine's system prompt through `jarvis ask`, the API server, and `jarvis chat`.
 The upstream guide mentions an `OPENJARVIS_MODEL` environment variable. It
 does not exist in this version; use `jarvis ask -m <model>` or edit the config.
 
+## Title and transport watch: a continuous managed agent
+
+The monitor operative is a long-running agent that keeps state between
+runs. Ours re-reads the overnight notes folder every 30 minutes, compares
+against what it remembered from the previous run, and rewrites a one-page
+status file: titles pending and for how long, transport pickups due, parts
+promises not yet sourced, and what changed since last time. It differs from
+the scheduled monitor in that it is managed by the agents subsystem, with
+checkpoints, pause and resume, and a status page it owns.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `configs/floras-auto/title-watch.toml` | Global config: engine, model, sqlite memory, and file access fenced to the notes and status folders. |
+| `configs/floras-auto/templates/floras_title_watch.toml` | The managed-agent template: schedule, tools, standing instruction, and system prompt. |
+| `scripts/floras-auto/setup-title-watch.sh` | Installs the config and template with the chosen folder paths written in, then creates the agent. |
+
+Set it up, test one run, then schedule it:
+
+```bash
+scripts/floras-auto/setup-title-watch.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/status
+```
+
+```bash
+uv run jarvis agents run <agent-id>
+```
+
+```bash
+uv run jarvis agents start <agent-id>
+```
+
+```bash
+uv run jarvis agents daemon
+```
+
+The daemon runs in the foreground and must stay up for scheduled runs to
+fire. The agent id is printed by the setup script and by
+`uv run jarvis agents list`. The status page lands at
+`~/FlorasAuto/status/title-watch.md`.
+
+### Things to know about managed agents
+
+- **Template strategy fields are stored but not applied.** The template's
+  `memory_extraction`, `observation_compression`, `retrieval_strategy`,
+  `task_decomposition`, `max_turns`, and `temperature` are saved with the
+  agent but the executor does not pass them to the agent, which runs with
+  its defaults (25 turns). The GUI shows the stored values.
+- **`jarvis agents create` takes no instruction.** The setup script writes
+  the folder paths into the template's standing instruction before
+  installing it, which is how the agent learns where to look.
+- **`jarvis agents logs` reports no history after `agents run`.** The run
+  count and findings do show in `agents info` and `agents list`.
+- **Managed agents auto-approve sensitive tools** when run from the CLI,
+  the same as `jarvis ask`. This template includes no shell tool, and file
+  access is fenced, so the exposure is limited to the two folders.
+- Memory is shared with the other Floras agents on the same machine. Keep
+  the memory store phrase "Title watch previous run" in the stored note,
+  as the template instructs, so recall finds the right entry first.
+
+Verified in the sandbox on 2026-11-02 with a stand-in engine that drives a
+fixed four-step tick: the setup script installed the config and template
+and created the agent; one run recalled memory, read the notes inside the
+fence, stored a dated summary, and wrote the status page; a second run found
+the first run's summary in memory. Real judgement about deadlines still
+needs a machine with Ollama.
+
 ## Known quirks
 
 - **`uv sync` removes the Rust extension.** Any `uv sync` rebuilds the venv
