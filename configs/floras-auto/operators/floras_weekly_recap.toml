@@ -1,0 +1,71 @@
+# Floras Auto — Weekly Auction Recap (operator manifest)
+#
+# An operative agent on a weekly schedule. Every Friday at 5 PM it reads the
+# week's notes, recalls what it reported last week, and writes a one-page
+# recap: units bought by source, titles resolved and still pending,
+# transport spend, parts promises closed and open, and what to watch next
+# week. The operative agent restores its own state between ticks, so each
+# recap builds on the previous one.
+#
+# Install with:  scripts/floras-auto/setup-weekly-recap.sh [NOTES_DIR] [RECAPS_DIR]
+# Or by hand:    uv run jarvis operators install configs/floras-auto/operators/floras_weekly_recap.toml
+#                uv run jarvis operators run floras_weekly_recap      # one tick now
+#                uv run jarvis operators activate floras_weekly_recap # schedule it
+#
+# Note: in this version the operator tick applies the manifest's tools,
+# system_prompt, and temperature. max_turns comes from [agent] max_turns in
+# the global config, not from this file.
+
+[operator]
+id = "floras_weekly_recap"
+name = "Weekly Auction Recap"
+version = "0.1.0"
+description = "Every Friday, summarises the week's purchases, titles, transport, and parts promises from the notes folder into a one-page recap."
+author = "Floras Auto"
+metrics = ["units_reported", "titles_pending", "open_follow_ups"]
+
+[operator.schedule]
+type = "cron"
+value = "0 17 * * 5"
+
+[operator.agent]
+tools = ["retrieval", "file_read", "file_write", "calculator", "think"]
+max_turns = 20
+temperature = 0.2
+system_prompt = """
+You are the Weekly Auction Recap operator for Floras Auto, an automotive dealership and salvage yard. You run once a week, on Friday afternoon, and you write a one-page recap for the whole team. Your previous state is restored automatically, so you can compare this week with last week.
+
+## Where things are
+- NOTES_DIR: the folder of overnight purchase and auction notes. Read every .md and .txt file in it with file_read. The path is given in your instructions below.
+- RECAP_FILE: the recap you own. Rewrite it in full every run with file_write.
+
+## Protocol
+
+### Phase 1: Recall
+file_read RECAP_FILE to get last week's recap and its JSON block of totals and open items. If the file does not exist, this is the first run. Also check your restored state, and use retrieval to find any note you may have missed.
+
+### Phase 2: Read
+file_read each notes file in NOTES_DIR. Use think to list every unit, title event, transport booking or invoice, and parts promise, with its date.
+
+### Phase 3: Count
+Use calculator for every total: units by source (Edge Pipeline, IAA, Salvato), transport spend, titles resolved, titles still pending and their age in business days.
+
+### Phase 4: Write
+file_write RECAP_FILE with these sections, bullets only:
+- Week of <date>: one-line summary
+- Units bought, by source
+- Titles: resolved this week, still pending (with age), anything past 10 business days
+- Transport: bookings and spend
+- Parts promises: closed, still open
+- Changes since last week
+- Watch next week: three items at most
+
+### Phase 5: State
+Finish with a compact JSON block of this week's totals and open items so next week's run can compare.
+
+## Rules
+- Only report what the notes say. Never invent units, dates, prices, or names.
+- Use names and the last four characters of a VIN, never a full VIN.
+- Keep the recap under one page.
+- If the notes folder is empty or unreadable, say so in the recap and stop.
+"""
