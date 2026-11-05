@@ -34,7 +34,103 @@ git checkout floras-auto-dev && git merge main
 | Rust toolchain | stable | Needed to build the PyO3 extension. |
 | Node.js | 22.22 or newer | Only for the browser GUI. |
 | npm | 11.x | The frontend refuses npm 10. See the workaround below. |
-| Ollama | latest | Default local inference engine. The CLI and server refuse to start without a reachable engine. |
+| Ollama | latest | Default local inference engine. The CLI and server refuse to start without a reachable engine. See "Ollama: the local model engine" below. |
+
+## Ollama: the local model engine
+
+Every Floras agent runs on Ollama, and none of them has yet been checked
+against a real model. This section is how to get Ollama running and the
+models pulled, which is the step that closes that gap.
+
+### Install it
+
+On a shop machine, the official installer or desktop app from
+https://ollama.com/download is the simplest route. Building from source
+is the fallback when an installer is not an option, and it is the route
+verified here.
+
+### Build from source (verified 2026-11-02)
+
+Needs Go, CMake 3.24 or newer, a C/C++ compiler, and Ninja. Go downloads
+the exact toolchain version the module asks for on its own, so an older
+Go on the machine is fine.
+
+```bash
+git clone --depth 1 https://github.com/ollama/ollama && cd ollama
+```
+
+```bash
+cmake -B build . && cmake --build build --parallel 4
+```
+
+This builds the `ollama` binary in the repository root and the CPU
+inference libraries under `build/lib/ollama`, one per CPU generation from
+Sandy Bridge to Zen 4. On a four-core machine the native compile takes
+roughly twenty minutes. GPU backends are opt-in at configure time, for
+example `-DOLLAMA_LLAMA_BACKENDS=cuda_v13`; see `docs/development.md` in
+the Ollama repository.
+
+A source build reports its version as `0.0.0`. That is expected and
+harmless.
+
+### Start it and pull the models
+
+```bash
+./ollama serve
+```
+
+It listens on `127.0.0.1:11434`, the address every Floras config expects.
+To keep models off the system disk, set `OLLAMA_MODELS` to a folder first.
+In a second terminal, pull what the configs use:
+
+```bash
+./ollama pull qwen3.5:4b
+```
+
+```bash
+./ollama pull qwen3.5:9b
+```
+
+```bash
+./ollama pull nomic-embed-text
+```
+
+| Model | Used by | Approximate size |
+|---|---|---|
+| `qwen3.5:4b` | simple chat, morning digest minimum, the recommended default from `jarvis init` | 2–3 GB |
+| `qwen3.5:9b` | every other Floras agent; the ReAct and CodeAct agents need at least this size | 6 GB |
+| `nomic-embed-text` | optional, improves ranking in deep research | under 1 GB |
+
+Then confirm OpenJarvis sees the engine:
+
+```bash
+uv run jarvis doctor
+```
+
+### Claude Code on the local model
+
+Ollama can start the Claude Code CLI pointed at the local server, so
+Claude Code's agent loop runs on a model on our own hardware:
+
+```bash
+./ollama launch claude --model qwen3.5:9b
+```
+
+It sets Claude Code's API address to the local Ollama server and uses a
+placeholder key, so nothing goes to a cloud API. If the model is not
+pulled yet it stops and says so; add `--yes` to let it pull automatically.
+Claude Code itself must be installed; the launcher offers to install it if
+it is missing.
+
+### Cloud sessions and the model registry
+
+In a Claude Code cloud session, model pulls go to `registry.ollama.ai`,
+and the session's network policy must allow it. Add `registry.ollama.ai`
+and `ollama.com` under Allowed domains in the environment's network
+settings, with the package managers box left ticked. The policy is fixed
+when a session starts, so start a new session after changing it. In the
+session of 2026-11-02 the build, `ollama serve`, and `ollama launch claude`
+all worked, and the pull stopped with "Forbidden" for exactly this reason.
 
 ## Setup from source
 
