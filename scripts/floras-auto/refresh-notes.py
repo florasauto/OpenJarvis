@@ -25,8 +25,9 @@ Usage:
         [--days 7] [--every SECONDS] [--no-index]
 
     NOTES_DIR    Folder of notes. Default: ~/FlorasAuto/overnight-notes
-    BUNDLE_DIR   Where the bundle is written. Default: ~/FlorasAuto/jarvis
-                 Must not be inside NOTES_DIR, or the bundle would be indexed.
+    BUNDLE_DIR   Where the bundle is written. Default: a "jarvis" folder beside
+                 NOTES_DIR, for example ~/FlorasAuto/jarvis. Must not be inside
+                 NOTES_DIR, or the bundle would be indexed as a note.
     --days N     Include notes dated within the last N days. Default 7.
     --every S    Keep running and refresh every S seconds (minimum 60).
     --no-index   Write the bundle only.
@@ -301,14 +302,17 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("notes_dir", nargs="?", default="~/FlorasAuto/overnight-notes")
-    parser.add_argument("bundle_dir", nargs="?", default="~/FlorasAuto/jarvis")
+    parser.add_argument("bundle_dir", nargs="?", default=None)
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--every", type=int, default=0, metavar="SECONDS")
     parser.add_argument("--no-index", action="store_true")
     args = parser.parse_args()
 
     notes_dir = Path(args.notes_dir).expanduser().resolve()
-    bundle_dir = Path(args.bundle_dir).expanduser().resolve()
+    if args.bundle_dir is None:
+        bundle_dir = notes_dir.parent / "jarvis"
+    else:
+        bundle_dir = Path(args.bundle_dir).expanduser().resolve()
     if not notes_dir.is_dir():
         print(f"error: notes folder not found: {notes_dir}", file=sys.stderr)
         return 2
