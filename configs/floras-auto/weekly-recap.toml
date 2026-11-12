@@ -1,15 +1,15 @@
 # Floras Auto — Weekly Auction Recap (global config)
 #
-# Engine, scheduler, memory, and file-access settings for the Weekly Auction
-# Recap operator. The operator itself is defined by
+# Engine, scheduler, turn limit, and file-access settings for the Weekly
+# Auction Recap operator. The operator itself is defined by
 # configs/floras-auto/operators/floras_weekly_recap.toml.
 #
-# Install with:  scripts/floras-auto/setup-weekly-recap.sh [NOTES_DIR] [RECAPS_DIR]
+# Install with:  scripts/floras-auto/setup-weekly-recap.sh [NOTES_DIR] [RECAPS_DIR] [BUNDLE_DIR]
 # The script rewrites security.allowed_dirs to the folders you choose.
 #
-# Operators read ~/.openjarvis/config.toml for the engine, model, memory
-# backend, scheduler, and security settings, so this file must be the active
-# config when the scheduler runs.
+# Operators read ~/.openjarvis/config.toml for the engine, model, turn limit,
+# scheduler, and security settings, so this file must be the active config
+# when the scheduler runs.
 
 [engine]
 default = "ollama"
@@ -19,17 +19,19 @@ default = "ollama"
 # host = "http://192.168.1.50:11434"
 
 [intelligence]
-# qwen3.5:9b needs roughly 6 GB of RAM. Use qwen3.5:4b on smaller machines.
+# qwen3.5:9b needs roughly 7 GB of RAM. Use qwen3.5:4b on smaller machines.
 default_model = "qwen3.5:9b"
 temperature = 0.2
+# The default of 1,024 output tokens is too close: writing the recap took
+# about 650 tokens in testing, and a call that is cut off writes nothing.
+max_tokens = 2048
 
 [agent]
 default_agent = "simple"            # Plain chat stays usable; the recap is an operator.
-max_turns = 20                      # Operators take their turn limit from here, not the manifest.
+# Operators take their turn limit from here, not from the manifest. A run
+# needs about six turns: last recap, notes bundle, think, write, reply.
+max_turns = 14
 context_from_memory = false
-
-[memory]
-default_backend = "sqlite"          # Operator state and the retrieval tool use memory.db.
 
 [scheduler]
 enabled = true                      # Required: operators are scheduler tasks.
@@ -41,13 +43,23 @@ enabled = true
 # auto_activate = "floras_weekly_recap"   # Uncomment to activate on scheduler start.
 
 [tools]
-enabled = ["retrieval", "file_read", "file_write", "calculator", "think"]
+enabled = ["file_read", "file_write", "calculator", "think"]
+
+[tools.storage]
+# Deliberately not a real backend: no backend is registered under this name,
+# so the system runs without memory. Memory is shared by every agent on the
+# machine, and the recap would otherwise pull other agents' leftovers into
+# its prompt as "previous state". It compares against last week's recap file
+# instead.
+default_backend = "none"
 
 [security]
 profile = "personal"
 # file_read and file_write refuse anything outside these folders. The setup
-# script replaces them with the notes folder and the recaps folder you pick.
-allowed_dirs = ["~/FlorasAuto/overnight-notes", "~/FlorasAuto/recaps"]
+# script replaces them with the recaps folder and the notes-bundle folder.
+# The recaps folder comes first: a file saved without a full path lands in
+# the first folder listed. The agent never needs the notes folder itself.
+allowed_dirs = ["~/FlorasAuto/recaps", "~/FlorasAuto/jarvis"]
 
 [analytics]
 enabled = false
