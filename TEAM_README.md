@@ -95,11 +95,14 @@ In a second terminal, pull what the configs use:
 ./ollama pull nomic-embed-text
 ```
 
-| Model | Used by | Approximate size |
+| Model | Used by | Size on disk (measured 2026-11-11) |
 |---|---|---|
-| `qwen3.5:4b` | simple chat, morning digest minimum, the recommended default from `jarvis init` | 2–3 GB |
-| `qwen3.5:9b` | every other Floras agent; the ReAct and CodeAct agents need at least this size | 6 GB |
-| `nomic-embed-text` | optional, improves ranking in deep research | under 1 GB |
+| `qwen3.5:4b` | simple chat, morning digest minimum, the recommended default from `jarvis init` | 3.3 GB |
+| `qwen3.5:9b` | every other Floras agent; the ReAct and CodeAct agents need at least this size | 6.6 GB |
+| `nomic-embed-text` | optional, improves ranking in deep research | 0.3 GB |
+
+Loaded for use, the 9B model takes about 7 GB of RAM with the 16k context
+OpenJarvis asks for.
 
 Then confirm OpenJarvis sees the engine:
 
@@ -131,6 +134,8 @@ settings, with the package managers box left ticked. The policy is fixed
 when a session starts, so start a new session after changing it. In the
 session of 2026-11-02 the build, `ollama serve`, and `ollama launch claude`
 all worked, and the pull stopped with "Forbidden" for exactly this reason.
+On 2026-11-11, in an environment named "openjarvis" that allows both hosts,
+all three models pulled without trouble.
 
 ## Setup from source
 
@@ -285,13 +290,106 @@ the page showed all ten cards, the status chips read server online with the
 engine, model, and agent, a message sent from the chat panel streamed back
 a reply from the stand-in engine, and the console showed no errors.
 
+## Real-model check: how the agents did on qwen3.5:9b
+
+Until 2026-11-11 every agent here had only run against a stand-in engine
+with canned replies. On 2026-11-11 and 2026-11-12 each one ran against the
+real `qwen3.5:9b` model on Ollama, through its own setup script, on a
+four-core machine with no GPU. The inputs were three fictional overnight
+notes and two fictional policy documents with known facts, so every answer
+could be checked.
+
+The first run passed three agents, half-passed five, and failed one. The
+fixes on this branch came out of that run, and the changed agents were
+rerun until they passed or the cause was understood.
+
+| Agent | First run | After the fixes | Time of latest run |
+|---|---|---|---|
+| Deep research | Pass: both answers correct, with citations | not changed | 1.5 min |
+| Code assistant | Pass: its script printed the right top five | output limit raised only | 2 min |
+| Morning digest | Pass with no sources connected | not changed | under 1 min |
+| Scheduled monitor | Partial: no per-unit list, stale saved summary | Pass: full list, latest statuses, summary really stored | 3 min |
+| Title watch | Fail: could not find the notes, wrote nothing | Pass: correct page, and the next run tracked a change | 4 min |
+| Office assistant | Partial: draft landed in the notes folder with a wrong date | Pass: calculator used, correct total, draft in the drafts folder | 4 min |
+| Intake checker | Partial: invented owner roles, misfiled a parts promise | Pass: owners unassigned, parts "none noted", checklist saved | 5 min |
+| Deal calculator | Partial: right figures, but never saved the deal sheet | Pass: same figures, deal sheet saved, surcharge rule explicit | 6 min |
+| Weekly recap | Partial: counted a title as resolved that no note mentions | Pass: every count and the totals correct | 11 min |
+
+What held up from the start: tool calling, the ReAct text format, running
+Python, and file fencing all work on the real model. No agent invented a
+VIN or a price, and every figure computed with a tool was correct.
+
+What to keep in mind when using them:
+
+- **Each result is one or two runs.** The model is not consistent. At
+  temperature 0.3 the office assistant used the calculator and saved its
+  draft on one run and, on the next, added in its head, got the total wrong
+  by $10, and reported a saved file that did not exist. Low temperature and
+  explicit rules reduced this in testing. They do not remove it. Check
+  anything that matters.
+- **Small misses remain.** The title watch did not mark a transport dated
+  today as due, and counted business days differently from the table. The
+  scheduled monitor left out a transport booking. The office assistant and
+  the deal calculator replied with only the path of the file they saved,
+  without restating the answer.
+- **Not tested:** the morning digest with a real mailbox, calendar, and
+  voice; the agents firing on their own schedules through the daemons; real
+  dealership notes and documents.
+- **Speed is for a machine with no GPU.** The model reads about 35 tokens a
+  second and writes about 3 there, so every model turn costs half a minute
+  or more.
+
+## Keeping the notes fresh: refresh-notes.py
+
+Five agents work from the overnight notes folder, and none of them can look
+in it directly: no tool lets an agent list a folder. One script does that
+work for all of them. Run it whenever notes change, or leave it running.
+
+```bash
+uv run python scripts/floras-auto/refresh-notes.py ~/FlorasAuto/overnight-notes --every 600
+```
+
+Each pass does two things:
+
+1. **Writes a bundle of the recent notes** into a `jarvis` folder beside the
+   notes folder. The bundle starts with today's date and a table of
+   business days elapsed, then the full text of every note from the last
+   seven days, oldest first. The weekly recap reads it as one file,
+   `recent-notes.md`. The title watch reads the same text as pages,
+   `recent-notes-page-1.md` onward, each under 2,000 characters.
+2. **Re-indexes the notes folder into memory**, so the agents that search
+   (scheduled monitor, office assistant, intake checker) see new notes.
+
+| Option | Meaning |
+|---|---|
+| `--every SECONDS` | Keep running and refresh on that interval. Without it, one pass. |
+| `--days N` | How many days of notes go in the bundle. Default 7. |
+| `--no-index` | Write the bundle only. Use it on a machine whose active config is the title watch or weekly recap, which run without memory. |
+
+How notes are picked up:
+
+- `.md`, `.markdown`, and `.txt` files directly in the notes folder. Files in
+  subfolders, and names starting with `.` or `_`, are ignored.
+- A note's date comes from a `YYYY-MM-DD` in its file name, for example
+  `overnight-2026-11-09.md`. Name notes this way. Without a date in the
+  name, the file's last-modified date is used, which changes when a file is
+  copied or edited.
+- Holidays are not skipped in the business-day table.
+- A deleted note stays in the memory index until the index is rebuilt.
+
+On a shop machine, three things must stay running for the scheduled agents:
+`ollama serve`, this refresh loop, and the agent's own daemon
+(`jarvis scheduler start` or `jarvis agents daemon`).
+
 ## Scheduled monitor: morning auction review
 
-Our first configured agent. Every morning it reads the overnight notes the
+Our first configured agent. Every morning it searches the overnight notes the
 team drops into a folder, lists each unit bought from Edge Pipeline, IAA, and
 Salvato with its pickup or title status, flags follow-up calls, and stores a
 dated summary so the next run can compare against it. It only reads locally
-indexed documents, so nothing leaves the machine.
+indexed notes, so nothing leaves the machine. Its tools are `memory_search`
+and `memory_store`. The upstream preset's knowledge tools are left out
+because they have no store on the scheduler path.
 
 Files:
 
@@ -317,7 +415,8 @@ uv run jarvis scheduler start
 ```
 
 The scheduler runs in the foreground. On a shop machine, run it under a
-service manager or a scheduled task so it survives reboots.
+service manager or a scheduled task so it survives reboots. The monitor only
+sees notes that are indexed, so keep `refresh-notes.py` running too.
 
 The upstream guide for this preset is out of date. The real command syntax is:
 
@@ -328,9 +427,11 @@ The upstream guide for this preset is out of date. The real command syntax is:
 | `scheduler status <id>` | `scheduler logs <id>` |
 | `scheduler delete <id>` | `scheduler cancel <id>` |
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine: task creation,
-an immediate run through the operative agent, and the run log all worked.
-The model's actual reasoning still needs checking on a machine with Ollama.
+Real-model result (2026-11-12, `qwen3.5:9b`): in three minutes it listed all
+three test units with their latest status, flagged the pending title, and
+stored a summary that a memory search then found. It left out one transport
+booking. Its first run gave no per-unit list, wasted a turn on a tool with no
+store behind it, and saved a stale summary. See "Real-model check".
 
 ## Morning digest: spoken team briefing
 
@@ -393,10 +494,11 @@ and `[tools]` lists and add the digest's `[digest]` sections plus
 - `jarvis connect imap` runs the OAuth flow and fails, because the CLI treats
   the IMAP connectors as OAuth sources. Use the setup script or the GUI.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine: config parses,
-the four sources are recognised and reported as not connected, the collector
-builds the briefing prompt, and the engine is called. Voice output and the
-real briefing text still need a machine with Ollama and the voice extra.
+Real-model result (2026-11-11, `qwen3.5:9b`): with no sources connected it
+addressed the team, gave the correct date, said plainly that the mailbox,
+calendar, weather, and news were not connected, and invented nothing. A
+briefing built from a real mailbox, and the Kokoro voice, are still
+untested.
 
 ## Deep research: questions over our own documents
 
@@ -450,10 +552,11 @@ ollama pull nomic-embed-text
 Export Excel sheets to CSV or PDF before ingesting. Unsupported files are
 skipped and listed at the end of the ingest run.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine that issues one
-search call: ingest wrote two sample documents to the knowledge store, the
-research loop searched it, both documents came back as hits, and the answer
-was built from them. Real answer quality still needs a machine with Ollama.
+Real-model result (2026-11-11, `qwen3.5:9b`): asked a two-part question
+over two test policy documents, it answered both parts correctly with
+citations in about ninety seconds, and ranking used the `nomic-embed-text`
+model. The output shows citation numbers but does not list which file each
+number refers to.
 
 ## Code assistant: local help with our own scripts
 
@@ -498,10 +601,12 @@ cd ~/FlorasAuto/scripts && uv run jarvis chat
 - The upstream guide mentions a `sandboxed` agent for Docker isolation. It is
   not registered in this version, so do not rely on it.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine that issues one
-tool call per request: Python execution returned the right result, reads and
-writes respected the fence, and the agent had no shell tool available. Real
-code quality still needs a machine with Ollama.
+Real-model result (2026-11-11, `qwen3.5:9b`): asked for a script that
+prints the five best-selling models from a CSV, it wrote one in two turns,
+and the script printed exactly the right five when run from its folder. It
+opens the CSV relative to the current folder, so it fails when run from
+elsewhere. The output limit is raised to 4,096 tokens, because a script is
+written in one tool call and a call that is cut off writes nothing.
 
 ## Simple chat: a general assistant for the team
 
@@ -546,28 +651,33 @@ that the config schema advertises is not read by the CLI, so use the persona
 mechanism instead. Verified in the sandbox: the persona text reached the
 engine's system prompt through `jarvis ask`, the API server, and `jarvis chat`.
 
+Real-model result (2026-11-11, `qwen3.5:4b`): asked for a pickup-ready text,
+it wrote a professional draft signed from the team, but it named the wrong
+weekday and told the customer to bring a document nobody had mentioned. It
+is not told the date. Read its drafts before sending them.
+
 The upstream guide mentions an `OPENJARVIS_MODEL` environment variable. It
 does not exist in this version; use `jarvis ask -m <model>` or edit the config.
 
 ## Title and transport watch: a continuous managed agent
 
-The monitor operative is a long-running agent that keeps state between
-runs. Ours re-reads the overnight notes folder every 30 minutes, compares
-against what it remembered from the previous run, and rewrites a one-page
-status file: titles pending and for how long, transport pickups due, parts
-promises not yet sourced, and what changed since last time. It differs from
-the scheduled monitor in that it is managed by the agents subsystem, with
-checkpoints, pause and resume, and a status page it owns.
+The monitor operative is a long-running agent managed by the agents
+subsystem, with checkpoints, pause and resume, and a status page it owns.
+Every 30 minutes ours reads its own previous status page and the recent
+notes, then rewrites a one-page status file: titles pending and for how
+long, transport due, parts promises, what changed since the last run, and
+what needs a call today.
 
 Files:
 
 | Path | Purpose |
 |---|---|
-| `configs/floras-auto/title-watch.toml` | Global config: engine, model, sqlite memory, and file access fenced to the notes and status folders. |
-| `configs/floras-auto/templates/floras_title_watch.toml` | The managed-agent template: schedule, tools, standing instruction, and system prompt. |
-| `scripts/floras-auto/setup-title-watch.sh` | Installs the config and template with the chosen folder paths written in, then creates the agent. |
+| `configs/floras-auto/title-watch.toml` | Global config: engine, model, output and turn limits, memory off, and file access fenced to the status and notes-bundle folders. |
+| `configs/floras-auto/templates/floras_title_watch.toml` | The managed-agent template: schedule, tools, and the step-by-step prompt. |
+| `scripts/floras-auto/setup-title-watch.sh` | Installs the config and template with the real file paths written in, writes the first notes bundle, and creates the agent. |
 
-Set it up, test one run, then schedule it:
+Set it up, test one run, then schedule it. The setup prints these commands
+with the real agent id and paths:
 
 ```bash
 scripts/floras-auto/setup-title-watch.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/status
@@ -585,36 +695,59 @@ uv run jarvis agents start <agent-id>
 uv run jarvis agents daemon
 ```
 
-The daemon runs in the foreground and must stay up for scheduled runs to
-fire. The agent id is printed by the setup script and by
-`uv run jarvis agents list`. The status page lands at
-`~/FlorasAuto/status/title-watch.md`.
+```bash
+uv run python scripts/floras-auto/refresh-notes.py ~/FlorasAuto/overnight-notes --no-index --every 600
+```
+
+The daemon and the refresh loop both run in the foreground and must stay
+up. The status page lands at `~/FlorasAuto/status/title-watch.md` and shows
+when the notes bundle was written, so stale notes are visible on the page.
+
+### How it works, and why
+
+The first version told the agent to read every file in the notes folder and
+keep its state in memory. On the real model it wrote nothing. Each choice
+below answers something found in those runs.
+
+- **It reads the notes bundle, not the folder.** No tool can list a folder,
+  so the agent could not find the note files and ran out of turns guessing
+  names. See "Keeping the notes fresh".
+- **The notes come in pages under 2,000 characters.** This agent type
+  replaces any longer tool output with a model-written summary before the
+  agent sees it. The status page is kept under that size for the same reason.
+- **Its state is its own status page.** Each run starts by reading the
+  previous page. Memory is switched off for this config
+  (`[tools.storage] default_backend = "none"`, a name no backend is
+  registered under). With memory on, this agent type makes an extra model
+  call after every tool call to extract "causal relationships" into the
+  store all agents share, and pulls other agents' leftovers into its prompt.
+- **No think step.** With one, the model spent its whole output allowance
+  on a single think call, was cut off, and the run ended with nothing
+  written. It now writes the page straight after the last notes page.
+- **Output limit raised to 2,048 tokens**, turn limit set to 12. Both come
+  from the global config. The template's own `max_turns`, `temperature`,
+  and four strategy fields are stored with the agent but never applied.
 
 ### Things to know about managed agents
 
-- **Template strategy fields are stored but not applied.** The template's
-  `memory_extraction`, `observation_compression`, `retrieval_strategy`,
-  `task_decomposition`, `max_turns`, and `temperature` are saved with the
-  agent but the executor does not pass them to the agent, which runs with
-  its defaults (25 turns). The GUI shows the stored values.
+- **`jarvis agents run` needs the agent id, not its name.** `agents list`
+  shows it, and prints to stderr, so a script must capture `2>&1`.
 - **`jarvis agents create` takes no instruction.** The setup script writes
-  the folder paths into the template's standing instruction before
-  installing it, which is how the agent learns where to look.
+  the real file paths into the template's prompt before installing it.
+- **Rerunning the setup creates a second agent with the same name.** Delete
+  the old one first with `jarvis agents delete <agent-id>`.
 - **`jarvis agents logs` reports no history after `agents run`.** The run
   count and findings do show in `agents info` and `agents list`.
 - **Managed agents auto-approve sensitive tools** when run from the CLI,
-  the same as `jarvis ask`. This template includes no shell tool, and file
-  access is fenced, so the exposure is limited to the two folders.
-- Memory is shared with the other Floras agents on the same machine. Keep
-  the memory store phrase "Title watch previous run" in the stored note,
-  as the template instructs, so recall finds the right entry first.
+  the same as `jarvis ask`. This template has only `file_read` and
+  `file_write`, fenced to two folders.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine that drives a
-fixed four-step tick: the setup script installed the config and template
-and created the agent; one run recalled memory, read the notes inside the
-fence, stored a dated summary, and wrote the status page; a second run found
-the first run's summary in memory. Real judgement about deadlines still
-needs a machine with Ollama.
+Real-model result (2026-11-12, `qwen3.5:9b`): the first run wrote a correct
+status page in about four minutes. After a new note and a refresh, the
+second run cleared the title and transport that the note closed and listed
+them under "Changes since last run". Two misses on the first page: it
+counted four business days where the table says three, and it did not mark
+a transport dated today as due. See "Real-model check".
 
 ## Office assistant: multi-step help with tools
 
@@ -628,8 +761,8 @@ Files:
 
 | Path | Purpose |
 |---|---|
-| `configs/floras-auto/office-assistant.toml` | Config with the orchestrator agent, six tools, and file access fenced to the notes and drafts folders. |
-| `configs/floras-auto/personas/office/SOUL.md` | Tells the assistant when to use each tool and how to report. Installed to `~/.openjarvis/personas/floras-office/`. |
+| `configs/floras-auto/office-assistant.toml` | Config with the orchestrator agent, six tools, and file access fenced to the drafts and notes folders. |
+| `configs/floras-auto/personas/office/SOUL.md` | Tells the assistant when to use each tool and how to report. Installed to `~/.openjarvis/personas/floras-office/` with the drafts folder path written in. |
 | `scripts/floras-auto/setup-office-assistant.sh` | Installs the config and persona and indexes the notes folder. |
 
 Set it up and start a session:
@@ -649,6 +782,24 @@ right command, because the `memory_search` tool reads `memory.db`:
 uv run jarvis memory index ~/FlorasAuto/overnight-notes
 ```
 
+The refresh loop in "Keeping the notes fresh" does the same on a timer.
+
+### What the real-model runs changed
+
+- **The drafts folder is listed first in `allowed_dirs`.** A file saved
+  without a full path lands in the first folder listed. With the notes
+  folder first, a draft landed among the notes and was indexed as one, and
+  another agent then cited it as a source.
+- **The persona carries the full drafts path**, written in by the setup.
+- **Three rules are spelled out in the persona**: every number comes from a
+  calculator call, a file is saved only by `file_write` and never claimed
+  otherwise, and nothing is invented. On one run the model added in its head,
+  got the total wrong by $10, and reported a saved file that did not exist.
+- **Temperature is 0.1.** At 0.3 the same request behaved correctly on one
+  run and badly on the next.
+- **It writes no dates of its own.** `jarvis ask` does not tell the model
+  the date, and it had dated a draft a day late.
+
 ### How it differs from the other agents
 
 - The **code assistant** is the same orchestrator agent with the Python
@@ -663,12 +814,11 @@ uv run jarvis memory index ~/FlorasAuto/overnight-notes
 - Context injection is off; the agent reaches the notes only through the
   search tool, so every fact it uses is visible as a tool call.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine that drives a
-three-step request: the setup script installed the config and persona and
-indexed a sample notes file; one request ran memory search (found the
-note), calculator (correct total), and file write (draft landed in the
-drafts folder) across four turns. Real reasoning still needs a machine with
-Ollama.
+Real-model result (2026-11-12, `qwen3.5:9b`): it found the pending items in
+the notes, made three calculator calls, reported the correct total, and
+saved the draft with its full path in the drafts folder, with no date of
+its own. The chat reply only pointed at the saved file. Two earlier runs
+each failed in a different way. See "Real-model check".
 
 ## Unit intake checker: an auditable ReAct agent
 
@@ -683,9 +833,10 @@ Files:
 
 | Path | Purpose |
 |---|---|
-| `configs/floras-auto/intake-checker.toml` | Config with the `native_react` agent, five tools, and file access fenced to the notes and intake folders. |
+| `configs/floras-auto/intake-checker.toml` | Config with the `native_react` agent, five tools, and file access fenced to the intake and notes folders. |
 | `configs/floras-auto/prompts/native_react_system_prompt.md` | The agent's system prompt: the checklist, the rules, and the ReAct format block. |
-| `scripts/floras-auto/setup-intake-checker.sh` | Installs the config, installs the prompt with the intake path written in, and indexes the notes. |
+| `configs/floras-auto/roles.md` | The team's roles. The checker names owners only from this list. Ships empty. |
+| `scripts/floras-auto/setup-intake-checker.sh` | Installs the config, installs the prompt with the intake path and the roles written in, and indexes the notes. |
 
 Set it up and run one unit:
 
@@ -696,6 +847,15 @@ scripts/floras-auto/setup-intake-checker.sh ~/FlorasAuto/overnight-notes ~/Flora
 ```bash
 uv run jarvis ask "Intake checklist for the IAA SUV"
 ```
+
+### Owners come from roles.md
+
+The checker ends each open item with an owner. On its first real run it had
+no list to draw on and invented roles such as "Title Clerk" and "Yard
+Coordinator". It now names an owner only from `configs/floras-auto/roles.md`.
+That file ships empty, so until the office fills it in, every item reads
+"owner: unassigned". Add one line per role, written as
+`Role: what that role owns`, then rerun the setup script.
 
 ### How this agent is customised, and a caution
 
@@ -714,13 +874,11 @@ uv run jarvis ask "Intake checklist for the IAA SUV"
   `~/.openjarvis/agents/native_react/few_shot.json` if the model needs
   nudging on the format.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine that speaks
-the ReAct text format: the setup script installed the config and override
-and indexed a sample notes file; one request ran three turns, a memory
-search that found the note, a file write that landed in the intake folder,
-and a final answer; the engine's system prompt contained the override, the
-intake path, and the tool list. Real checklist judgement still needs a
-machine with Ollama.
+Real-model result (2026-11-12, `qwen3.5:9b`): the 9B model held the ReAct
+format in every run. The final run saved the checklist in the intake
+folder, marked every owner "unassigned", and wrote "none noted" for parts
+with the reason. It left the title type and the business-day count off the
+checklist. See "Real-model check".
 
 ## Deal calculator: a CodeAct agent that computes every figure
 
@@ -736,7 +894,7 @@ Files:
 
 | Path | Purpose |
 |---|---|
-| `configs/floras-auto/deal-calculator.toml` | Config with the `native_openhands` agent, five tools, and file access fenced to the notes and deals folders. |
+| `configs/floras-auto/deal-calculator.toml` | Config with the `native_openhands` agent, five tools, and file access fenced to the deals and notes folders. |
 | `configs/floras-auto/prompts/native_openhands_system_prompt.md` | The agent's prompt: tool format, the fee schedule, what to produce, and the rules. |
 | `scripts/floras-auto/setup-deal-calculator.sh` | Installs the config and the prompt with the folder paths written in. |
 
@@ -769,31 +927,39 @@ uv run jarvis ask "Landed cost on the IAA SUV at a 4200 bid with 180 transport, 
   persona files and builds its prompt from a machine-wide override at
   `~/.openjarvis/agents/native_openhands/system_prompt.md`, which must keep
   the `{tool_descriptions}` placeholder.
+- **Write every fee rule so it has one reading.** "Where it applies" was
+  enough for the model to add a fee on one run and leave it out on the
+  next. When the office replaces the placeholder schedule, say exactly when
+  each fee applies and what to do when the user does not say.
+- **`file_read` and `file_write` are tools, not Python functions.** The
+  model once called `file_write` inside its Python and got an error. The
+  prompt now says so.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine that speaks
-the CodeAct format: the setup script installed the config and override;
-one request ran three turns, a Python block that printed the fee, tax, and
-landed cost, a file write that saved the deal sheet, and a final answer;
-the engine's prompt contained the override, the fee schedule, the deals
-path, and the tool list. Real code quality and arithmetic from the model
-still need a machine with Ollama.
+Real-model result (2026-11-12, `qwen3.5:9b`): it wrote and ran the Python,
+reported the landed cost on the test unit correctly against the placeholder
+schedule, and saved a deal sheet with every line and assumption. The chat
+reply gave only the saved path. Its first run skipped the save without
+saying so, and one run added the internet surcharge when the other runs
+left it out, which gave two totals for the same question. The schedule now
+says to add that surcharge only when the user says the bid was placed
+online. See "Real-model check".
 
 ## Weekly auction recap: a scheduled operator
 
 The operative agent is the persistent, scheduled agent, and the operators
 subsystem runs it from a TOML manifest. Ours is a weekly recap: every
-Friday at 5 PM it reads the week's notes, reads last week's recap, counts
-units by source, titles resolved and pending, transport spend, and parts
-promises, and rewrites a one-page recap with a JSON block of totals for the
-next run to compare against.
+Friday at 5 PM it reads last week's recap and the recent-notes bundle, then
+rewrites a one-page recap: units bought by source, titles received and
+pending, transport, parts promises, changes since last week, and a line of
+JSON totals for the next run to compare against.
 
 Files:
 
 | Path | Purpose |
 |---|---|
-| `configs/floras-auto/operators/floras_weekly_recap.toml` | The operator manifest: cron schedule, tools, and the five-phase protocol. |
-| `configs/floras-auto/weekly-recap.toml` | Global config with the scheduler and operators enabled, sqlite memory, and file access fenced to the notes and recaps folders. |
-| `scripts/floras-auto/setup-weekly-recap.sh` | Installs the config and the manifest with the folder paths written into its prompt. |
+| `configs/floras-auto/operators/floras_weekly_recap.toml` | The operator manifest: cron schedule, tools, and the step-by-step prompt. |
+| `configs/floras-auto/weekly-recap.toml` | Global config with the scheduler and operators enabled, output and turn limits, memory off, and file access fenced to the recaps and notes-bundle folders. |
+| `scripts/floras-auto/setup-weekly-recap.sh` | Installs the config and the manifest with the real file paths written in, and writes the first notes bundle. |
 
 Set it up, test one run, then schedule it:
 
@@ -813,6 +979,29 @@ uv run jarvis operators activate floras_weekly_recap
 uv run jarvis scheduler start
 ```
 
+```bash
+uv run python scripts/floras-auto/refresh-notes.py ~/FlorasAuto/overnight-notes --no-index --every 600
+```
+
+The bundle must be fresh when the recap fires, so keep the refresh loop
+running alongside the scheduler.
+
+### How it works, and why
+
+- **It reads the notes bundle in one call.** The first version had to find
+  the note files itself, which only worked because another agent's setup had
+  indexed them, and took 13 model turns. It now takes five.
+- **Today's date and the business-day counts come from the bundle.**
+  Operator ticks are not told the date.
+- **Week-over-week comparison comes from last week's recap file**, which is
+  why the prompt starts by reading it. Memory is switched off for this
+  config, as for the title watch.
+- **A title counts as received only when a note says so.** The first
+  version read "picked up" as "title resolved". Every unit bought must now
+  appear on exactly one of three lines: received, pending, or not mentioned.
+- **Output limit raised to 2,048 tokens.** Writing the recap took about 650
+  in testing, and a call that is cut off writes nothing.
+
 ### Things to know about operators
 
 - **Activate creates a duplicate task.** The manager creates the scheduler
@@ -824,28 +1013,48 @@ uv run jarvis scheduler start
   `jarvis scheduler logs operator:floras_weekly_recap` instead. Runs started
   with `operators run` bypass the scheduler and do not appear there.
 - **The manifest's `max_turns` is ignored.** Operators take the turn limit
-  from `[agent] max_turns` in the global config, which this config sets to 20.
-- **Memory tools are not wired on this path.** `memory_store` and
-  `memory_retrieve` are built without a backend for operator ticks, so the
-  manifest uses `retrieval`, which is wired, plus `file_read` and
-  `file_write`. Week-over-week comparison comes from reading last week's
-  recap file, which is why the prompt starts there.
-- **State persistence was not observed in the sandbox.** Two runs created
-  a session row for the operator but saved no messages and no state. The
-  recap-file approach makes the agent independent of that, but the team
-  should confirm on a real run whether the restored-state feature works.
-- The manifest's prompt describes the two folders by name; the setup script
-  writes the real paths in when it installs the manifest.
+  from `[agent] max_turns` in the global config, which this config sets to 14.
+- **The memory tools are not wired on this path.** `memory_store` and
+  `memory_retrieve` are built without a backend for operator ticks. The
+  manifest does not use them.
 
-Verified in the sandbox on 2026-11-02 with a stand-in engine that drives
-file reads and writes: the setup script installed the config and the
-manifest with the paths substituted; `operators list` showed the operator
-with its Friday cron; one run read the notes file inside the fence and
-wrote the recap to the recaps folder; activation created the scheduler task
-with the correct next run, and the duplicate was found and cancelled. Real
-counting and judgement still need a machine with Ollama.
+Real-model result (2026-11-12, `qwen3.5:9b`): every count and the JSON
+totals were right, the unit with no title note was listed as "not
+mentioned", and the recap landed in the recaps folder, in about eleven
+minutes on a machine with no GPU. The first version took seventeen minutes
+and counted a title as resolved that no note mentions. See "Real-model
+check".
 
 ## Known quirks
+
+Found in the real-model runs of 2026-11-11 and 2026-11-12:
+
+- **No tool can list a folder.** `file_read` reads one file at a known path.
+  An agent told to "read every file in the folder" cannot find them. This
+  is why `refresh-notes.py` exists.
+- **Most agents are not told today's date.** Managed agents, the morning
+  digest, and the deep research agent get it. Agents run through
+  `jarvis ask`, `jarvis chat`, the scheduler, and operators do not, and the
+  model will guess. The monitors read the date from the notes bundle.
+- **The default output limit of 1,024 tokens ends runs silently.** When a
+  tool call is cut off at the limit, the model returns nothing, and the run
+  finishes with an empty answer and no error. The `think` tool makes this
+  likely, because the model can pour the whole allowance into one thought.
+  Every tool-using Floras config sets `max_tokens` to 2,048 or more.
+- **A file saved without a full path lands in the first `allowed_dirs`
+  folder.** List the output folder first, and give agents full paths.
+- **The monitor operative rewrites long tool output.** Any tool result over
+  2,000 characters is replaced with a model-written summary, and with memory
+  on it makes an extra model call after every tool call. The template
+  fields that would turn this off are not applied to managed agents.
+- **Memory is shared by every agent on a machine.** One agent's stored
+  summary ranks alongside the real notes in another agent's search, stale
+  or wrong figures included.
+- **The 9B model is not consistent from run to run.** The same request
+  used the right tools on one run and skipped them on the next. Low
+  temperature and short, explicit rules help. Check its work.
+
+Found earlier:
 
 - **`uv sync` removes the Rust extension.** Any `uv sync` rebuilds the venv
   without the locally built `openjarvis_rust` package, and the memory backend
