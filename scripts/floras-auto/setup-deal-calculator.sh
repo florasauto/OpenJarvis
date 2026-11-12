@@ -48,9 +48,10 @@ NOTES_DIR="$NOTES_DIR" DEALS_DIR="$DEALS_DIR" uv run python - "$CONFIG_SRC" "$CO
 import os, sys, tomlkit
 src, dst = sys.argv[1], sys.argv[2]
 doc = tomlkit.parse(open(src, encoding="utf-8").read())
-doc["security"]["allowed_dirs"] = [os.environ["NOTES_DIR"], os.environ["DEALS_DIR"]]
+# Deals folder first: a file saved without a full path lands in the first one.
+doc["security"]["allowed_dirs"] = [os.environ["DEALS_DIR"], os.environ["NOTES_DIR"]]
 open(dst, "w", encoding="utf-8").write(tomlkit.dumps(doc))
-print(f"    allowed_dirs = ['{os.environ['NOTES_DIR']}', '{os.environ['DEALS_DIR']}']")
+print(f"    allowed_dirs = ['{os.environ['DEALS_DIR']}', '{os.environ['NOTES_DIR']}']")
 PY
 
 echo "==> Installing CodeAct prompt override to $PROMPT_DST"
