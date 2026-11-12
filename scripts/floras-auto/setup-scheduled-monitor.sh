@@ -28,8 +28,12 @@ CRON="${2:-0 7 * * 1-6}"
 CONFIG_SRC="$REPO_ROOT/configs/floras-auto/scheduled-monitor.toml"
 CONFIG_DST="$HOME/.openjarvis/config.toml"
 
-PROMPT='Review the overnight auction and purchase notes that were indexed since your last run. List every unit purchased from Edge Pipeline, IAA, and Salvato with its pickup or title status. Flag anything that needs a follow-up call today, such as pending titles or unsourced parts. Store a short dated summary in memory so tomorrow'"'"'s run can compare against it.'
-TOOLS="knowledge_search,knowledge_sql,memory_search,memory_store,think"
+PROMPT='Review the overnight auction and purchase notes. List every unit purchased from Edge Pipeline, IAA, and Salvato with its latest pickup or title status. When two notes mention the same unit, the later note is the current status. Flag anything that needs a follow-up call today, such as pending titles or unsourced parts. Before you answer, call memory_store with a short summary so the next run can compare against it. Never say the summary was stored unless that memory_store call succeeded. Nobody is at the keyboard, so do not ask questions.'
+# knowledge_search and knowledge_sql are not listed: on the scheduler path
+# they have no knowledge store. memory_search reads the indexed notes.
+# think is not listed either: unattended, the model once spent its whole
+# output allowance on one think call and returned nothing.
+TOOLS="memory_search,memory_store"
 
 cd "$REPO_ROOT"
 
@@ -58,3 +62,6 @@ echo "  uv run jarvis doctor                       # confirm Ollama and the mode
 echo "  uv run jarvis scheduler run-task operative # run the task once to test"
 echo "  uv run jarvis scheduler start              # keep running to honour the schedule"
 echo "  uv run jarvis scheduler list               # see the task and its next run time"
+echo
+echo "The monitor only sees notes that are indexed. Keep the index fresh:"
+echo "  uv run python $REPO_ROOT/scripts/floras-auto/refresh-notes.py $NOTES_DIR --every 600"
