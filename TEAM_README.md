@@ -218,6 +218,14 @@ DuckDuckGo, and example.com. They pass with open internet access and fail
 behind a restrictive proxy. Treat them as environment failures, not
 regressions, unless the error text changes.
 
+A fifth failure appears on a machine where the deep research setup script
+has run: `tests/memory/test_ingest.py::test_read_document_pdf_missing_dep`.
+That script installs the PDF reader, and the test hands the reader a fake
+PDF while only allowing for the reader being absent. It is an environment
+difference too. The skipped count also moves with the extras installed. On
+2026-11-12, with the PDF extra in place, the suite gave 9382 passed, 5
+failed, 92 skipped.
+
 ## Quick smoke test
 
 With Ollama running and a model pulled:
