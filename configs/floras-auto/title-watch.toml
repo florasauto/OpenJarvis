@@ -1,14 +1,14 @@
 # Floras Auto — Title and Transport Watch (global config)
 #
-# Engine, model, memory, and file-access settings for the managed
+# Engine, model, turn limit, and file-access settings for the managed
 # "Title and Transport Watch" agent. The agent itself is defined by
 # configs/floras-auto/templates/floras_title_watch.toml.
 #
-# Install with:  scripts/floras-auto/setup-title-watch.sh [NOTES_DIR] [STATUS_DIR]
+# Install with:  scripts/floras-auto/setup-title-watch.sh [NOTES_DIR] [STATUS_DIR] [BUNDLE_DIR]
 # The script rewrites security.allowed_dirs to the folders you choose.
 #
-# Managed agents read ~/.openjarvis/config.toml for the engine, model, memory
-# backend, and security settings, so this file must be the active config when
+# Managed agents read ~/.openjarvis/config.toml for the engine, model, turn
+# limit, and security settings, so this file must be the active config when
 # the agent daemon runs.
 
 [engine]
@@ -19,28 +19,40 @@ default = "ollama"
 # host = "http://192.168.1.50:11434"
 
 [intelligence]
-# qwen3.5:9b needs roughly 6 GB of RAM. Use qwen3.5:4b on smaller machines.
+# qwen3.5:9b needs roughly 7 GB of RAM. Use qwen3.5:4b on smaller machines.
 default_model = "qwen3.5:9b"
 temperature = 0.2                   # Low temperature keeps status pages consistent.
+# The default of 1,024 output tokens cut the model off in the middle of a
+# long tool call, which ended the run with nothing written. The status page
+# is about 500 tokens; this leaves room.
+max_tokens = 2048
 
 [agent]
 default_agent = "simple"            # Plain chat stays usable; the watch is a managed agent.
+# Managed agents take their turn limit from here, not from the template.
+# A run needs about five turns: previous page, two or three notes pages,
+# the write, and the reply.
+max_turns = 12
 context_from_memory = false
 
-[memory]
-default_backend = "sqlite"          # Where memory_store / memory_retrieve persist between ticks.
-
 [tools]
-enabled = ["file_read", "file_write", "memory_store", "memory_retrieve", "memory_search", "think"]
+enabled = ["file_read", "file_write"]
 
 [tools.storage]
-default_backend = "sqlite"
+# Deliberately not a real backend: no backend is registered under this name,
+# so the system runs without memory. With memory on, this agent type makes an
+# extra model call after every tool call to extract "causal relationships"
+# into the shared store, and pulls other agents' leftovers into its prompt.
+# The watch keeps its state in its own status page instead.
+default_backend = "none"
 
 [security]
 profile = "personal"
 # file_read and file_write refuse anything outside these folders. The setup
-# script replaces them with the notes folder and the status folder you pick.
-allowed_dirs = ["~/FlorasAuto/overnight-notes", "~/FlorasAuto/status"]
+# script replaces them with the status folder and the notes-bundle folder.
+# The status folder comes first: a file saved without a full path lands in
+# the first folder listed. The agent never needs the notes folder itself.
+allowed_dirs = ["~/FlorasAuto/status", "~/FlorasAuto/jarvis"]
 
 [analytics]
 enabled = false
