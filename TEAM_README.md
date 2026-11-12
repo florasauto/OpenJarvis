@@ -257,7 +257,7 @@ Files:
 | Path | Purpose |
 |---|---|
 | `frontend/public/floras.html` | The page. Vite copies it into `src/openjarvis/server/static/` at build time, and the server serves it at `/floras.html`. |
-| `scripts/floras-auto/start-interface.sh` | Builds the frontend once if needed, starts the server in the background, and prints or opens the address. |
+| `scripts/floras-auto/start-interface.sh` | Builds the frontend once if needed, refreshes the page copy when the page has changed since that build, starts the server in the background, and prints or opens the address. |
 
 Start it:
 
