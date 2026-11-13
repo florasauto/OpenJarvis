@@ -2,7 +2,8 @@
 # Floras Auto — start the Jarvis interface.
 #
 # What it does:
-#   1. Builds the browser frontend once if it is missing (needs Node 22 and npm 11)
+#   1. Builds the browser frontend once if it is missing (needs Node 22 and npm 11),
+#      and refreshes the Floras Auto page if it changed since that build
 #   2. Starts the OpenJarvis API server in the background
 #   3. Prints the address of the Floras Auto page and opens it if a browser is available
 #
@@ -33,6 +34,10 @@ cd "$REPO_ROOT"
 if [ ! -f "$STATIC_DIR/floras.html" ]; then
   echo "==> Building the browser frontend (first run only)"
   ( cd frontend && npx -y npm@11 ci --no-audit --no-fund && npx -y npm@11 run build )
+elif [ frontend/public/floras.html -nt "$STATIC_DIR/floras.html" ]; then
+  # The build copies this page as-is, so an updated page needs no rebuild.
+  echo "==> Refreshing the Floras Auto page (it changed since the last build)"
+  cp frontend/public/floras.html "$STATIC_DIR/floras.html"
 fi
 
 if [ -z "$PORT" ]; then

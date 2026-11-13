@@ -20,7 +20,12 @@ default = "ollama"
 [intelligence]
 # qwen3.5:9b needs roughly 6 GB of RAM. Use qwen3.5:4b on smaller machines.
 default_model = "qwen3.5:9b"
-temperature = 0.3                   # Low temperature keeps daily summaries consistent.
+# Kept low on purpose: at 0.3 the same task behaved differently on every run.
+temperature = 0.1
+# Output allowance per model turn. The default of 1,024 tokens is a trap for
+# tool-using agents: a tool call that is cut off returns nothing, and the run
+# ends with an empty answer and no error.
+max_tokens = 2048
 
 [agent]
 default_agent = "operative"
@@ -29,8 +34,15 @@ context_from_memory = true          # Inject notes from earlier runs into contex
 
 [tools]
 # web_search is intentionally left out: the monitor should only read the
-# documents the team indexes, so nothing leaves the local machine.
-enabled = ["knowledge_search", "knowledge_sql", "scan_chunks", "memory_store", "memory_search", "think"]
+# notes the team indexes, so nothing leaves the local machine.
+# knowledge_search, knowledge_sql, and scan_chunks from the upstream preset
+# are also left out: on the scheduler path they have no knowledge store and
+# answer "No knowledge store configured", which cost the monitor a wasted
+# turn in the real-model run of 2026-11-11. memory_search reads the notes
+# that `jarvis memory index` puts in memory.db.
+# think is left out as well: unattended, the model once spent its whole
+# output allowance on a single think call and returned nothing.
+enabled = ["memory_store", "memory_search"]
 
 [tools.storage]
 default_backend = "sqlite"

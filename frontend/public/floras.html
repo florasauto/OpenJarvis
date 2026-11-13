@@ -77,6 +77,7 @@
     <p class="sub">Each agent has its own setup script. Running one switches the machine's active config, so run the setup for the agent you want, then restart the server. The chat panel talks to whichever agent is active now.</p>
     <div class="grid" id="agents"></div>
     <div class="note">Every agent runs on this machine with a local model. Nothing you type here leaves the building unless an agent's notes say otherwise.</div>
+    <div class="note">Five agents work from the overnight notes, and they only see notes after the refresh script has run. Leave this running: <code>uv run python scripts/floras-auto/refresh-notes.py ~/FlorasAuto/overnight-notes --every 600</code></div>
   </section>
 
   <section class="chat">
@@ -110,7 +111,7 @@ const AGENTS = [
     what: "Cited answers over the dealership's documents: policies, vendor lists, title procedures. Ingest PDFs and notes first.",
     setup: "scripts/floras-auto/setup-deep-research.sh ~/FlorasAuto/documents", use: "uv run jarvis ask --research \"…\"" },
   { id: "intake", name: "Unit intake checker", kind: "on demand", agent: "native_react",
-    what: "Walks a fixed intake checklist for one unit, writes it to the intake folder, reports open items. Every step is visible.",
+    what: "Walks a fixed intake checklist for one unit, writes it to the intake folder, reports open items with owners from roles.md. Every step is visible.",
     setup: "scripts/floras-auto/setup-intake-checker.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/intake", use: "uv run jarvis ask \"Intake checklist for the IAA SUV\"" },
   { id: "deal", name: "Deal calculator", kind: "on demand", agent: "native_openhands",
     what: "Landed cost with fee tiers, transport, tax; break-even and what-if bids, computed in Python. Saves deal sheets.",
@@ -125,10 +126,10 @@ const AGENTS = [
     what: "Spoken briefing at 6 AM from the team mailbox, calendar, weather, and news. Local voice, no API key.",
     setup: "scripts/floras-auto/setup-morning-digest.sh", use: "uv run jarvis digest --fresh" },
   { id: "watch", name: "Title and transport watch", kind: "continuous", agent: "monitor_operative",
-    what: "Every 30 minutes, re-reads the notes and maintains a status page of titles pending, transport due, and changes.",
+    what: "Every 30 minutes, reads the recent notes and its own last status page, then rewrites the page: titles pending, transport due, and changes.",
     setup: "scripts/floras-auto/setup-title-watch.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/status", use: "uv run jarvis agents daemon" },
   { id: "recap", name: "Weekly auction recap", kind: "scheduled", agent: "operative (operator)",
-    what: "Fridays at 5 PM: units by source, titles resolved and pending, transport spend, parts promises, changes since last week.",
+    what: "Fridays at 5 PM: units by source, titles received and pending, transport, parts promises, changes since last week.",
     setup: "scripts/floras-auto/setup-weekly-recap.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/recaps", use: "uv run jarvis scheduler start" },
 ];
 
