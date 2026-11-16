@@ -308,8 +308,9 @@ notes and two fictional policy documents with known facts, so every answer
 could be checked.
 
 The first run passed three agents, half-passed five, and failed one. The
-fixes on this branch came out of that run, and the changed agents were
-rerun until they passed or the cause was understood.
+first round of fixes came out of that run, and the changed agents were
+rerun until they passed or the cause was understood. The table shows where
+that round ended. The follow-up below it shows what a harder test found.
 
 | Agent | First run | After the fixes | Time of latest run |
 |---|---|---|---|
@@ -327,22 +328,58 @@ What held up from the start: tool calling, the ReAct text format, running
 Python, and file fencing all work on the real model. No agent invented a
 VIN or a price, and every figure computed with a tool was correct.
 
+### Follow-up on 2026-11-13 and 2026-11-16: the small misses
+
+The passes above still had small misses. Each was worked on and rerun, on
+four test units across four notes, with a fifth note added before a second
+run. Three of them turned out not to be small.
+
+| Miss | What was done | Result in the reruns |
+|---|---|---|
+| Simple chat named the wrong weekday and added a requirement | Persona rules: no dates of its own, only the details given | Clean on 2 runs of 2 |
+| Office assistant replied with only the saved path | Persona fixes the order: answer, steps, path | Answer and every figure in the reply, 1 run of 1 |
+| Deal calculator replied with only the saved path | Reply repeats the sheet, then the path | Right on 1 run of 1 with the final wording |
+| Intake checker left out title type and days pending | Checklist items name their parts; a later note wins; a source on every item | Both present on 3 runs of 3; everything right on 2 |
+| Title watch did not flag a pickup due today | The refresh script marks every date `[TODAY]`, `[PAST]`, or `[FUTURE]` | On the call list on 6 first runs of 6 |
+| Title watch counted business days its own way | The script prints the count on each note | Right on 6 runs of 6 |
+| Scheduled monitor left out a transport booking | Rebuilt: reads the notes bundle, numbers every unit, lists transport as Done and Waiting, stores nothing | All four units on 5 runs of 6; transport right on both first mornings |
+| Weekly recap dropped its "past 10 business days" line | Line removed: a one-week recap cannot hold such a title. The title watch carries old titles forward | The watch carried and flagged a 14-day title, 1 run of 1 |
+
+Larger problems found on the way, and fixed:
+
+- **The weekly recap wrote nothing** when its think step ran past the
+  output limit, two runs out of two, on a four-unit week. The think step
+  is gone.
+- **The weekly recap copied last week's figures** when it read last week's
+  recap. It no longer reads it, and no longer compares weeks.
+- **The scheduled monitor repeated yesterday's review** when its stored
+  summary was fed back in. It stores nothing now.
+- **The title watch once put its page in the reply** without saving it. It
+  has saved the page on every run since the instruction was reworded.
+
 What to keep in mind when using them:
 
-- **Each result is one or two runs.** The model is not consistent. At
+- **Each result is a handful of runs.** The model is not consistent. At
   temperature 0.3 the office assistant used the calculator and saved its
   draft on one run and, on the next, added in its head, got the total wrong
   by $10, and reported a saved file that did not exist. Low temperature and
   explicit rules reduced this in testing. They do not remove it. Check
   anything that matters.
-- **Small misses remain.** The title watch did not mark a transport dated
-  today as due, and counted business days differently from the table. The
-  scheduled monitor left out a transport booking. The office assistant and
-  the deal calculator replied with only the path of the file they saved,
-  without restating the answer.
+- **The three monitors still make a mistake on some runs.** Tracking four
+  units across four notes is the hardest thing asked of this model here.
+  Dates, day counts, and the 10-day limit are now worked out by the refresh
+  script, and those came out right. What the model still has to judge, it
+  sometimes gets wrong: a late delivery that was "not confirmed" was
+  flagged by the title watch on two first runs of five, and the scheduled
+  monitor once called a title "received" that no note mentions. Treat the
+  status page, the morning review, and the recap as prompts to look, not as
+  the record.
+- **A larger model has not been tried.** It is the obvious next thing to
+  try for the three monitors if a machine with a GPU is available.
 - **Not tested:** the morning digest with a real mailbox, calendar, and
   voice; the agents firing on their own schedules through the daemons; real
-  dealership notes and documents.
+  dealership notes and documents; a week of notes longer than a few pages;
+  notes that write dates in a form the refresh script does not recognise.
 - **Speed is for a machine with no GPU.** The model reads about 35 tokens a
   second and writes about 3 there, so every model turn costs half a minute
   or more.
@@ -357,22 +394,52 @@ work for all of them. Run it whenever notes change, or leave it running.
 uv run python scripts/floras-auto/refresh-notes.py ~/FlorasAuto/overnight-notes --every 600
 ```
 
-Each pass does two things:
+Each pass does three things:
 
 1. **Writes a bundle of the recent notes** into a `jarvis` folder beside the
-   notes folder. The bundle starts with today's date and a table of
-   business days elapsed, then the full text of every note from the last
-   seven days, oldest first. The weekly recap reads it as one file,
-   `recent-notes.md`. The title watch reads the same text as pages,
-   `recent-notes-page-1.md` onward, each under 2,000 characters.
+   notes folder. The bundle starts with today's date, written both in full
+   and the way notes write it (`11/13`), and a table of business days
+   elapsed since each recent date. Then comes the full text of every note
+   from the last seven days, oldest first. The weekly recap and the
+   scheduled monitor read it as one file, `recent-notes.md`. The title
+   watch reads the same text as pages, `recent-notes-page-1.md` onward, each
+   under 2,000 characters.
 2. **Re-indexes the notes folder into memory**, so the agents that search
-   (scheduled monitor, office assistant, intake checker) see new notes.
+   (office assistant, intake checker) see new notes.
+3. **Re-counts the pending titles on the title watch's status page.** A line
+   such as "pending since 2026-10-27, 8 business days (not over 10)" is
+   rewritten with today's count. The watch carries an old pending title
+   forward by copying its line, count and all, so without this pass the
+   count would never grow and the 10-day limit would never be reached.
 
 | Option | Meaning |
 |---|---|
 | `--every SECONDS` | Keep running and refresh on that interval. Without it, one pass. |
 | `--days N` | How many days of notes go in the bundle. Default 7. |
-| `--no-index` | Write the bundle only. Use it on a machine whose active config is the title watch or weekly recap, which run without memory. |
+| `--no-index` | Skip the memory index. Use it on a machine whose active config is the title watch, weekly recap, or scheduled monitor, which run without memory. |
+| `--status-page FILE` | The title watch's status page. Default: `status/title-watch.md` beside the notes folder, which is where the standard setup puts it. Skipped when the file does not exist. |
+
+The script also does the date work the model gets wrong:
+
+- **Every date in a note is followed by a mark**: `[TODAY]`, `[PAST]`, or
+  `[FUTURE]`. Asked to flag a pickup booked for today, the model first
+  wrote no flag and then, on the next try, wrote "upcoming". With the marks
+  it reads the answer off the page. A note line then looks like this:
+  `Pickup moved to Friday 11/13 [TODAY], same $340 quote.`
+- **Every note's heading carries its age**: `Business days since this note:
+  4 (not over 10).` A title that went pending in that note has been pending
+  that long.
+- **Every count says which side of the 10-day limit it is on**: `(not over
+  10)` or `(OVER 10)`, in the note headings and in the table. Left to
+  compare the number with 10 itself, the model listed a title at 4 business
+  days as "over 10". The limit is `TITLE_LIMIT_DAYS` at the top of the
+  script.
+- Dates are recognised as `2026-11-09`, `November 9`, `Nov 9, 2026`,
+  `11/09/2026`, and `11/09`. A bare month and day counts as a date only when
+  both parts have two digits or a weekday comes first (`Fri 11/9`), so
+  "3/4 ton" and "1/2 tank" are left alone. Write dates one of these ways.
+  A date written another way gets no mark, and the agent has to judge it.
+- The marks are only in the bundle. The note files are never changed.
 
 How notes are picked up:
 
@@ -383,6 +450,9 @@ How notes are picked up:
   name, the file's last-modified date is used, which changes when a file is
   copied or edited.
 - Holidays are not skipped in the business-day table.
+- The table counts days elapsed, so a title that went pending on Monday
+  shows 1 on Tuesday. A note that counts Monday as day one will read one
+  higher. The agents are told to use the table and ignore counts in notes.
 - A deleted note stays in the memory index until the index is rebuilt.
 
 On a shop machine, three things must stay running for the scheduled agents:
@@ -391,22 +461,24 @@ On a shop machine, three things must stay running for the scheduled agents:
 
 ## Scheduled monitor: morning auction review
 
-Our first configured agent. Every morning it searches the overnight notes the
-team drops into a folder, lists each unit bought from Edge Pipeline, IAA, and
-Salvato with its pickup or title status, flags follow-up calls, and stores a
-dated summary so the next run can compare against it. It only reads locally
-indexed notes, so nothing leaves the machine. Its tools are `memory_search`
-and `memory_store`. The upstream preset's knowledge tools are left out
-because they have no store on the scheduler path.
+Our first configured agent. Every morning it reads the notes bundle and
+writes a morning review: every unit bought from Edge Pipeline, IAA, and
+Salvato, numbered, each with its title status and its pickup or transport
+status, then what needs a call today. It reads one local file, so nothing
+leaves the machine. Its only tool is `file_read`, fenced to the bundle
+folder. The review is the task's result and is kept in the scheduler's run
+log; `show-morning-review.py` prints it.
 
 Files:
 
 | Path | Purpose |
 |---|---|
 | `configs/floras-auto/scheduled-monitor.toml` | Config installed to `~/.openjarvis/config.toml`. |
-| `scripts/floras-auto/setup-scheduled-monitor.sh` | One-shot setup: installs the config, indexes notes, registers the task. |
+| `scripts/floras-auto/setup-scheduled-monitor.sh` | One-shot setup: installs the config with the bundle folder, writes the first notes bundle, registers the task. |
+| `scripts/floras-auto/show-morning-review.py` | Prints the latest review in full, and can save it to a file. |
 
-Set it up:
+Set it up. The third argument, the bundle folder, is optional and defaults
+to a `jarvis` folder beside the notes folder:
 
 ```bash
 scripts/floras-auto/setup-scheduled-monitor.sh ~/FlorasAuto/overnight-notes "0 7 * * 1-6"
@@ -422,9 +494,51 @@ uv run jarvis scheduler run-task operative
 uv run jarvis scheduler start
 ```
 
+Read the latest review in full, or save it where the team can open it:
+
+```bash
+uv run python scripts/floras-auto/show-morning-review.py
+```
+
+```bash
+uv run python scripts/floras-auto/show-morning-review.py --save ~/FlorasAuto/status/morning-review.md
+```
+
+`jarvis scheduler logs <task-id>` lists the runs but shows only the first
+few words of each review, which is why this script exists. It reads the
+scheduler's database and changes nothing in it.
+
 The scheduler runs in the foreground. On a shop machine, run it under a
-service manager or a scheduled task so it survives reboots. The monitor only
-sees notes that are indexed, so keep `refresh-notes.py` running too.
+service manager or a scheduled task so it survives reboots. The monitor
+works from the notes bundle, so keep `refresh-notes.py` running too, or it
+reviews old notes. The setup script prints the command.
+
+### How it works, and why
+
+The first version searched memory for the notes and stored a summary there
+for the next run. Both went wrong on the real model.
+
+- **It reads the notes bundle, not memory.** Memory search hands the agent
+  the five best-matching pieces of the notes, in no particular order. On
+  four short test notes the review dropped a unit and missed a pickup that a
+  later note had moved. A real week of notes does not fit in five pieces.
+  See "Keeping the notes fresh".
+- **It stores nothing.** The summary one run stored was fed back into the
+  next morning's run, and that review repeated the old statuses instead of
+  reading the new note. Memory is switched off for this config, as for the
+  title watch and the weekly recap.
+- **Units are numbered one by one and counted afterwards.** Asked to list
+  units "from Edge Pipeline, IAA, and Salvato", the model gave each source
+  exactly one unit. Asked for the count first, it wrote 3 and then listed
+  three of four.
+- **Title and transport are reported separately.** Asked for "pickup or
+  title status", it gave one of the two. Each unit's line ends with its
+  title status: received, pending, or not mentioned.
+- **Transport is two lists, Done and Waiting**, as on the title watch's
+  page. Given one free line per unit, the model wrote "done" for a pickup
+  that had only been moved to another day.
+- **"Due today" and "late" come from the date marks** the refresh script
+  puts in the bundle, not from the model comparing dates.
 
 The upstream guide for this preset is out of date. The real command syntax is:
 
@@ -435,11 +549,17 @@ The upstream guide for this preset is out of date. The real command syntax is:
 | `scheduler status <id>` | `scheduler logs <id>` |
 | `scheduler delete <id>` | `scheduler cancel <id>` |
 
-Real-model result (2026-11-12, `qwen3.5:9b`): in three minutes it listed all
-three test units with their latest status, flagged the pending title, and
-stored a summary that a memory search then found. It left out one transport
-booking. Its first run gave no per-unit list, wasted a turn on a tool with no
-store behind it, and saved a stale summary. See "Real-model check".
+Real-model result (2026-11-16, `qwen3.5:9b`), on four test units across
+four notes, two mornings in a row. On its best first morning the review
+listed all four units, got every title and every transport line right, and
+put the pickup due today, the late delivery, and a pending title on the
+call list, in about three and a half minutes. Over the last three first
+mornings the unit count was right every time and the transport lists were
+right twice. Second mornings, after a new note, were weaker each time: a
+unit left out of the numbered list, a unit on both transport lists, and
+once a title called "received" that no note mentions. Read the review as a
+prompt to look, not as the record. Earlier versions did worse; see
+"Real-model check".
 
 ## Morning digest: spoken team briefing
 
@@ -659,10 +779,14 @@ that the config schema advertises is not read by the CLI, so use the persona
 mechanism instead. Verified in the sandbox: the persona text reached the
 engine's system prompt through `jarvis ask`, the API server, and `jarvis chat`.
 
-Real-model result (2026-11-11, `qwen3.5:4b`): asked for a pickup-ready text,
-it wrote a professional draft signed from the team, but it named the wrong
-weekday and told the customer to bring a document nobody had mentioned. It
-is not told the date. Read its drafts before sending them.
+Real-model result (`qwen3.5:4b`): on 2026-11-11, asked for a pickup-ready
+text, it wrote a professional draft but named the wrong weekday and told the
+customer to bring a document nobody had mentioned. The persona now says that
+it is not told the date, that a draft uses only the details the user gave,
+and that a missing detail gets a blank in square brackets. On 2026-11-13 two
+reruns of the same request kept "tomorrow after 10 AM" as given and added
+nothing. Both drafts opened with a "Subject:" line, which a text message
+does not have. Read its drafts before sending them.
 
 The upstream guide mentions an `OPENJARVIS_MODEL` environment variable. It
 does not exist in this version; use `jarvis ask -m <model>` or edit the config.
@@ -707,9 +831,32 @@ uv run jarvis agents daemon
 uv run python scripts/floras-auto/refresh-notes.py ~/FlorasAuto/overnight-notes --no-index --every 600
 ```
 
+With the standard folders the refresh loop finds the status page by itself.
+If your status folder is somewhere else, add `--status-page` with the full
+path of `title-watch.md`. The setup script prints the exact command.
+
 The daemon and the refresh loop both run in the foreground and must stay
 up. The status page lands at `~/FlorasAuto/status/title-watch.md` and shows
 when the notes bundle was written, so stale notes are visible on the page.
+
+### Reading the status page
+
+- **Titles pending** lists each title a note says is pending, the day it
+  went pending, the business days since, and `(not over 10)` or `(OVER 10)`.
+- **Transport** has a Done line and a Waiting list. A waiting pickup ends
+  with the mark from the notes bundle: `[TODAY]` is due today, `[PAST]` is
+  late, `[FUTURE]` is still to come.
+- **Needs a call today** should hold titles marked `(OVER 10)`, waiting
+  transport marked `[TODAY]` or `[PAST]`, and open parts promises, and
+  nothing else. When there is nothing, it says so in one line.
+
+A title that stays pending for weeks drops out of the notes bundle after
+seven days. The watch keeps it by copying its line from its previous page,
+and `refresh-notes.py` keeps the count on that line current. In the one
+test of this, a title pending since 2026-10-27 was carried to a new page,
+shown at 14 business days, marked `(OVER 10)`, and put on the call list.
+This only works while the refresh loop runs with the status page in reach:
+use the command the setup script prints.
 
 ### How it works, and why
 
@@ -723,6 +870,13 @@ below answers something found in those runs.
 - **The notes come in pages under 2,000 characters.** This agent type
   replaces any longer tool output with a model-written summary before the
   agent sees it. The status page is kept under that size for the same reason.
+- **One page costs one model turn.** The turn limit of 12 leaves room for
+  about nine pages, roughly 12,000 characters of notes in the seven-day
+  window. Past that, expect the run to end before the page is written,
+  leaving the old page in place with its old "Updated" line. This has not
+  been tested with notes that long. If yours run longer, raise
+  `[agent] max_turns` in `title-watch.toml` and rerun the setup. The
+  refresh script prints the page count on every pass.
 - **Its state is its own status page.** Each run starts by reading the
   previous page. Memory is switched off for this config
   (`[tools.storage] default_backend = "none"`, a name no backend is
@@ -732,9 +886,32 @@ below answers something found in those runs.
 - **No think step.** With one, the model spent its whole output allowance
   on a single think call, was cut off, and the run ended with nothing
   written. It now writes the page straight after the last notes page.
-- **Output limit raised to 2,048 tokens**, turn limit set to 12. Both come
-  from the global config. The template's own `max_turns`, `temperature`,
-  and four strategy fields are stored with the agent but never applied.
+- **Output limit raised to 2,048 tokens**, turn limit set to 12, temperature
+  0.1. All three come from the global config. The template's own
+  `max_turns`, `temperature`, and four strategy fields are stored with the
+  agent but never applied.
+- **Dates are judged by the refresh script, not the model.** The page
+  carries the bundle's marks as they are: a waiting pickup ends in
+  `[TODAY]`, `[PAST]`, or `[FUTURE]`. `[TODAY]` means due today and `[PAST]`
+  means late. Asked to compare dates itself, the model left a pickup booked
+  for today unflagged on one run and called it "upcoming" on the next.
+- **Day counts and the 10-day limit are copied too.** Each note's heading
+  in the bundle says how many business days have passed since it and
+  whether that is over 10, and a pending title's line repeats both. Left to
+  count, the model continued a note's own "now 3 business days". Left to
+  compare with 10, it listed a title at 4 days as "over 10".
+- **Transport is split into Done and Waiting**, and every booked unit goes
+  on one of them. Done needs a note that says so in words. One run called a
+  delivery done that a note said was "not confirmed yet", because its date
+  had passed.
+- **The page must be saved, not spoken.** One run put the whole new page in
+  its reply and never called `file_write`, so the old page stayed in place.
+  The standing instruction now says that only a `file_write` call saves it.
+- **An old pending title is carried by copying its line.** The notes that
+  mention it age out of the bundle, so the previous page is the only place
+  it lives. The model copies the old count with the line, so the refresh
+  script re-counts the pending lines on the status page before each run.
+  Everything else on the page is written fresh from the notes.
 
 ### Things to know about managed agents
 
@@ -750,12 +927,20 @@ below answers something found in those runs.
   the same as `jarvis ask`. This template has only `file_read` and
   `file_write`, fenced to two folders.
 
-Real-model result (2026-11-12, `qwen3.5:9b`): the first run wrote a correct
-status page in about four minutes. After a new note and a refresh, the
-second run cleared the title and transport that the note closed and listed
-them under "Changes since last run". Two misses on the first page: it
-counted four business days where the table says three, and it did not mark
-a transport dated today as due. See "Real-model check".
+Real-model result (2026-11-13 and 2026-11-16, `qwen3.5:9b`), on four test
+units across four notes. Since the date marks went in, the page has been
+saved on every run, the pickup due today has been on the call list on six
+first runs out of six, and the day counts have been right on six runs out
+of six. On the last run a title carried over from an older page was shown
+as 14 business days, over 10, and put on the call list. A run takes five to
+ten minutes on a machine with no GPU.
+
+What it still gets wrong on some runs: a delivery that is late and "not
+confirmed yet" was put on the call list on two first runs out of five. On
+the others it was listed as late but left off the call list, or treated as
+arrived. Smaller slips move around from run to run: "$0" for a cost no
+note gives, a unit missing from the Done line. Read the page as a prompt to
+look, not as the record. See "Real-model check".
 
 ## Office assistant: multi-step help with tools
 
@@ -807,6 +992,10 @@ The refresh loop in "Keeping the notes fresh" does the same on a timer.
   run and badly on the next.
 - **It writes no dates of its own.** `jarvis ask` does not tell the model
   the date, and it had dated a draft a day late.
+- **The reply states the answer, then the path.** After saving a draft the
+  model used to reply with only "Note saved to" and the path. The persona
+  now fixes the order: the findings and every figure, the steps taken, and
+  the saved path on the last line.
 
 ### How it differs from the other agents
 
@@ -822,11 +1011,13 @@ The refresh loop in "Keeping the notes fresh" does the same on a timer.
 - Context injection is off; the agent reaches the notes only through the
   search tool, so every fact it uses is visible as a tool call.
 
-Real-model result (2026-11-12, `qwen3.5:9b`): it found the pending items in
-the notes, made three calculator calls, reported the correct total, and
-saved the draft with its full path in the drafts folder, with no date of
-its own. The chat reply only pointed at the saved file. Two earlier runs
-each failed in a different way. See "Real-model check".
+Real-model result (2026-11-13, `qwen3.5:9b`): it found the pending items in
+the notes, including a pickup that a later note had moved, reported the
+correct total with every line, and saved the draft in the drafts folder.
+The reply stated all of that and gave the path last. On this run it made one
+calculator call for the total and worked the tax line out itself; the
+figure was right. Two runs on 2026-11-12 each failed in a different way.
+See "Real-model check".
 
 ## Unit intake checker: an auditable ReAct agent
 
@@ -865,6 +1056,23 @@ That file ships empty, so until the office fills it in, every item reads
 "owner: unassigned". Add one line per role, written as
 `Role: what that role owns`, then rerun the setup script.
 
+### What the checklist carries
+
+Three additions came out of the real-model runs:
+
+- **The title and transport items name their parts.** Title: status, type
+  (clean, salvage, rebuilt), whether it is in the binder, and how long a
+  note says it has been pending. Transport: status, vendor, date, cost.
+  When the prompt only said "title: received, logged, and type", the
+  checklist said "pending" and left the rest out.
+- **Every item ends with "Source:"** and the note it came from, or "none".
+- **A later note wins.** Without that rule one run kept a pickup date that
+  a later note had moved.
+
+The checker is not told today's date and does not read the notes bundle. It
+reports how long a note says a title has been pending, as of that note. It
+cannot tell you a pickup is due today; the title watch does that.
+
 ### How this agent is customised, and a caution
 
 - **It ignores the persona files.** The ReAct agent builds its own system
@@ -882,11 +1090,14 @@ That file ships empty, so until the office fills it in, every item reads
   `~/.openjarvis/agents/native_react/few_shot.json` if the model needs
   nudging on the format.
 
-Real-model result (2026-11-12, `qwen3.5:9b`): the 9B model held the ReAct
-format in every run. The final run saved the checklist in the intake
-folder, marked every owner "unassigned", and wrote "none noted" for parts
-with the reason. It left the title type and the business-day count off the
-checklist. See "Real-model check".
+Real-model result (2026-11-13, `qwen3.5:9b`): the 9B model held the ReAct
+format in every run. The final run saved the checklist with the title as
+pending, type salvage, "3 business days as of the note dated 2026-11-11",
+the pickup on its moved date with the $340 quote, parts "none noted" with
+the reason, and a source on every item. Every owner read "unassigned". Of
+three runs that day, two were right on all of this. The middle one put the
+title type in the status slot and kept the old pickup date, which is what
+the later-note rule was added for. See "Real-model check".
 
 ## Deal calculator: a CodeAct agent that computes every figure
 
@@ -943,10 +1154,13 @@ uv run jarvis ask "Landed cost on the IAA SUV at a 4200 bid with 180 transport, 
   model once called `file_write` inside its Python and got an error. The
   prompt now says so.
 
-Real-model result (2026-11-12, `qwen3.5:9b`): it wrote and ran the Python,
+Real-model result (2026-11-13, `qwen3.5:9b`): it wrote and ran the Python,
 reported the landed cost on the test unit correctly against the placeholder
-schedule, and saved a deal sheet with every line and assumption. The chat
-reply gave only the saved path. Its first run skipped the save without
+schedule, and saved a deal sheet with every line and assumption. The reply
+repeated the sheet and gave the saved path last. That took two tries at the
+wording: told to reply in a fixed shape ending in a "Saved:" line, the
+model replied with that line alone. Told to repeat the text of the sheet,
+it did. Its first run on 2026-11-11 skipped the save without
 saying so, and one run added the internet surcharge when the other runs
 left it out, which gave two totals for the same question. The schedule now
 says to add that surcharge only when the user says the bid was placed
@@ -956,10 +1170,11 @@ online. See "Real-model check".
 
 The operative agent is the persistent, scheduled agent, and the operators
 subsystem runs it from a TOML manifest. Ours is a weekly recap: every
-Friday at 5 PM it reads last week's recap and the recent-notes bundle, then
-rewrites a one-page recap: units bought by source, titles received and
-pending, transport, parts promises, changes since last week, and a line of
-JSON totals for the next run to compare against.
+Friday at 5 PM it reads the recent-notes bundle and writes a one-page
+recap of the week: every unit bought, numbered and counted by source,
+titles received and pending, transport, parts promises, and a line of JSON
+totals. Each run overwrites `weekly-recap.md`, so copy a recap elsewhere if
+you want to keep it.
 
 Files:
 
@@ -998,17 +1213,34 @@ running alongside the scheduler.
 
 - **It reads the notes bundle in one call.** The first version had to find
   the note files itself, which only worked because another agent's setup had
-  indexed them, and took 13 model turns. It now takes five.
+  indexed them, and took 13 model turns. It now takes three or four.
 - **Today's date and the business-day counts come from the bundle.**
   Operator ticks are not told the date.
-- **Week-over-week comparison comes from last week's recap file**, which is
-  why the prompt starts by reading it. Memory is switched off for this
-  config, as for the title watch.
-- **A title counts as received only when a note says so.** The first
-  version read "picked up" as "title resolved". Every unit bought must now
-  appear on exactly one of three lines: received, pending, or not mentioned.
-- **Output limit raised to 2,048 tokens.** Writing the recap took about 650
-  in testing, and a call that is cut off writes nothing.
+- **It does not read last week's recap.** When it did, it copied last
+  week's figures into this week's: a transport cost that belonged to a
+  different unit, and "First recap" under changes. The recap is built from
+  this week's notes only and makes no week-over-week comparison. The JSON
+  totals line is there for anyone who wants to compare two weeks by hand.
+  Memory is switched off for this config, as for the title watch.
+- **No think step.** With one, the model spent its whole output allowance
+  on the think call in two runs out of two, was cut off, and wrote nothing.
+  A four-unit test week was enough to do it. It now writes the recap
+  straight after reading the bundle.
+- **Units are numbered one per line, then counted by source.** Asked for
+  "each source, then its units", the model gave every source exactly one
+  unit and dropped a second purchase from the same auction.
+- **Each numbered unit carries its own title status**: received, pending,
+  or not mentioned. Received means a note says the title was received; the
+  first version read "picked up" as "title resolved". The model often
+  writes "pending" where "not mentioned" is right. That mistake is harmless.
+  A version with only two states was tried, and in two runs out of two it
+  called an unmentioned title "received" because the truck had been picked
+  up. That mistake hides a missing title, so the third state stays.
+- **There is no "past 10 business days" line.** The bundle holds seven days
+  of notes, so no title in it can be more than five business days old.
+  Titles that have been pending for weeks are the title watch's job.
+- **Output limit raised to 4,096 tokens.** Writing the recap took about 650
+  for a three-unit test week, and a call that is cut off writes nothing.
 
 ### Things to know about operators
 
@@ -1026,16 +1258,17 @@ running alongside the scheduler.
   `memory_retrieve` are built without a backend for operator ticks. The
   manifest does not use them.
 
-Real-model result (2026-11-12, `qwen3.5:9b`): every count and the JSON
-totals were right, the unit with no title note was listed as "not
-mentioned", and the recap landed in the recaps folder, in about eleven
-minutes on a machine with no GPU. The first version took seventeen minutes
-and counted a title as resolved that no note mentions. See "Real-model
-check".
+Real-model result (2026-11-16, `qwen3.5:9b`): the last run was right on
+every line. Four numbered units, two of them for Edge Pipeline, the title
+no note mentions listed as "not mentioned", both pending titles with their
+dates and counts, all four transport bookings with the moved pickup on its
+new date, and the totals line. It took about seven and a half minutes on a
+machine with no GPU. That is one run. Each version before it got something
+wrong, and the points above say what. See "Real-model check".
 
 ## Known quirks
 
-Found in the real-model runs of 2026-11-11 and 2026-11-12:
+Found in the real-model runs of 2026-11-11 to 2026-11-16:
 
 - **No tool can list a folder.** `file_read` reads one file at a known path.
   An agent told to "read every file in the folder" cannot find them. This
@@ -1049,6 +1282,27 @@ Found in the real-model runs of 2026-11-11 and 2026-11-12:
   finishes with an empty answer and no error. The `think` tool makes this
   likely, because the model can pour the whole allowance into one thought.
   Every tool-using Floras config sets `max_tokens` to 2,048 or more.
+- **Raising the limit does not make `think` safe.** At 2,048 tokens the
+  weekly recap's think step still ran out, twice in a row, on a four-unit
+  week. None of the three monitors has a think step now. The deal
+  calculator keeps one: its questions are about one unit, and its thoughts
+  have stayed short.
+- **The model does not compare dates or count days reliably.** It called a
+  pickup booked for today "upcoming", extended a note's own day count, and
+  listed a title at 4 business days as "over 10". Anything of that kind is
+  now worked out by `refresh-notes.py` and printed in the bundle, so the
+  agent copies it.
+- **The model's own earlier output misleads it.** Shown last week's recap,
+  it copied last week's figures. Given the summary it had stored the day
+  before, it repeated yesterday's statuses. The title watch still reads its
+  previous page, because that is how it carries a long-pending title
+  forward, and it is told to write from the notes and not to copy the page.
+- **Asked for units "by source", the model gives each source one unit.**
+  It dropped a second purchase from the same auction in four runs out of
+  four. Ask for a numbered list, one unit per line, and count afterwards.
+  Asked for the count first, it wrote 3 and then listed three of four.
+- **After saving a file, the model tends to answer with only the path.**
+  Tell it that the reply repeats what the file says.
 - **A file saved without a full path lands in the first `allowed_dirs`
   folder.** List the output folder first, and give agents full paths.
 - **The monitor operative rewrites long tool output.** Any tool result over
