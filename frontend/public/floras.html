@@ -120,7 +120,7 @@ const AGENTS = [
     what: "Help with the team's own scripts. Python runs in a locked-down interpreter; file access fenced to one folder; no shell.",
     setup: "scripts/floras-auto/setup-code-assistant.sh ~/FlorasAuto/scripts", use: "cd ~/FlorasAuto/scripts && uv run jarvis chat" },
   { id: "monitor", name: "Scheduled monitor", kind: "scheduled", agent: "operative",
-    what: "Every morning, reviews overnight auction notes, lists units by source with title status, flags follow-up calls.",
+    what: "Every morning, reads the recent notes and writes a review: every unit bought, its title and transport status, and what needs a call today.",
     setup: "scripts/floras-auto/setup-scheduled-monitor.sh ~/FlorasAuto/overnight-notes", use: "uv run jarvis scheduler start" },
   { id: "digest", name: "Morning digest", kind: "scheduled", agent: "morning_digest",
     what: "Spoken briefing at 6 AM from the team mailbox, calendar, weather, and news. Local voice, no API key.",
@@ -129,7 +129,7 @@ const AGENTS = [
     what: "Every 30 minutes, reads the recent notes and its own last status page, then rewrites the page: titles pending, transport due, and changes.",
     setup: "scripts/floras-auto/setup-title-watch.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/status", use: "uv run jarvis agents daemon" },
   { id: "recap", name: "Weekly auction recap", kind: "scheduled", agent: "operative (operator)",
-    what: "Fridays at 5 PM: units by source, titles received and pending, transport, parts promises, changes since last week.",
+    what: "Fridays at 5 PM: the week's units counted by source, titles received and pending, transport, parts promises.",
     setup: "scripts/floras-auto/setup-weekly-recap.sh ~/FlorasAuto/overnight-notes ~/FlorasAuto/recaps", use: "uv run jarvis scheduler start" },
 ];
 
