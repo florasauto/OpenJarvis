@@ -22,7 +22,9 @@
 # bundle was written, so stale notes are visible.
 #
 # Afterwards (the setup prints these with the real paths and agent id):
-#   uv run python scripts/floras-auto/refresh-notes.py NOTES_DIR BUNDLE_DIR --no-index --every 600
+#   uv run python scripts/floras-auto/refresh-notes.py NOTES_DIR BUNDLE_DIR --no-index \
+#       --status-page STATUS_DIR/title-watch.md --every 600
+# The same loop keeps the day counts on the status page current.
 #   uv run jarvis agents run <agent-id>     # one tick now, to test
 #   uv run jarvis agents start <agent-id>   # schedule it (every 30 minutes)
 #   uv run jarvis agents daemon             # keep this running so scheduled ticks fire
@@ -86,7 +88,7 @@ print(f"    template installed to {tpl_dst}")
 PY
 
 echo "==> Writing the first notes bundle to $BUNDLE_DIR"
-uv run python "$REFRESH" "$NOTES_DIR" "$BUNDLE_DIR" --no-index
+uv run python "$REFRESH" "$NOTES_DIR" "$BUNDLE_DIR" --no-index --status-page "$STATUS_FILE"
 
 echo "==> Creating managed agent '$AGENT_NAME'"
 CREATE_OUT="$(uv run jarvis agents create --name "$AGENT_NAME" --template floras_title_watch 2>&1)"
@@ -103,4 +105,4 @@ echo "  uv run jarvis agents start $AGENT_ID    # schedule every 30 minutes"
 echo "  uv run jarvis agents daemon              # keep running so scheduled ticks fire"
 echo
 echo "Keep the notes bundle fresh, or the agent works from old notes:"
-echo "  uv run python $REFRESH $NOTES_DIR $BUNDLE_DIR --no-index --every 600"
+echo "  uv run python $REFRESH $NOTES_DIR $BUNDLE_DIR --no-index --status-page $STATUS_FILE --every 600"
