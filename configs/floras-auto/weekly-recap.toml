@@ -21,15 +21,18 @@ default = "ollama"
 [intelligence]
 # qwen3.5:9b needs roughly 7 GB of RAM. Use qwen3.5:4b on smaller machines.
 default_model = "qwen3.5:9b"
-temperature = 0.2
-# The default of 1,024 output tokens is too close: writing the recap took
-# about 650 tokens in testing, and a call that is cut off writes nothing.
-max_tokens = 2048
+# Kept low on purpose, as for the other agents. The operator tick takes its
+# temperature from the manifest, which says the same.
+temperature = 0.1
+# Output allowance per model turn. A call that is cut off writes nothing,
+# and the run ends with no recap and no error. Writing the recap took about
+# 650 tokens for a three-unit test week; a real week is longer.
+max_tokens = 4096
 
 [agent]
 default_agent = "simple"            # Plain chat stays usable; the recap is an operator.
 # Operators take their turn limit from here, not from the manifest. A run
-# needs about six turns: last recap, notes bundle, think, write, reply.
+# needs about four turns: notes bundle, calculator, write, reply.
 max_turns = 14
 context_from_memory = false
 
@@ -43,14 +46,14 @@ enabled = true
 # auto_activate = "floras_weekly_recap"   # Uncomment to activate on scheduler start.
 
 [tools]
-enabled = ["file_read", "file_write", "calculator", "think"]
+# think is left out on purpose: see the operator manifest.
+enabled = ["file_read", "file_write", "calculator"]
 
 [tools.storage]
 # Deliberately not a real backend: no backend is registered under this name,
 # so the system runs without memory. Memory is shared by every agent on the
 # machine, and the recap would otherwise pull other agents' leftovers into
-# its prompt as "previous state". It compares against last week's recap file
-# instead.
+# its prompt as "previous state".
 default_backend = "none"
 
 [security]
