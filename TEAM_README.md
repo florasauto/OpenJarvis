@@ -555,11 +555,11 @@ listed all four units, got every title and every transport line right, and
 put the pickup due today, the late delivery, and a pending title on the
 call list, in about three and a half minutes. Over the last three first
 mornings the unit count was right every time and the transport lists were
-right twice. Second mornings, after a new note, were weaker each time: a
-unit left out of the numbered list, a unit on both transport lists, and
-once a title called "received" that no note mentions. Read the review as a
-prompt to look, not as the record. Earlier versions did worse; see
-"Real-model check".
+right twice. In the last two rounds the second morning, after a new note,
+was weaker than the first: a unit left out of the numbered list, a unit on
+both transport lists, and once a title called "received" that no note
+mentions. Read the review as a prompt to look, not as the record. Earlier
+versions did worse; see "Real-model check".
 
 ## Morning digest: spoken team briefing
 
