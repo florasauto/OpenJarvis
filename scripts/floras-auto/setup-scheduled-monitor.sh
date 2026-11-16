@@ -19,6 +19,8 @@
 #   uv run jarvis scheduler start
 # Or run the task once to test it:
 #   uv run jarvis scheduler run-task operative
+# Read the latest review in full:
+#   uv run python scripts/floras-auto/show-morning-review.py
 #
 # Requires: a working source checkout (see TEAM_README.md) and Ollama
 # running with the configured model pulled.
@@ -119,6 +121,10 @@ echo "  uv run jarvis doctor                       # confirm Ollama and the mode
 echo "  uv run jarvis scheduler run-task operative # run the task once to test"
 echo "  uv run jarvis scheduler start              # keep running to honour the schedule"
 echo "  uv run jarvis scheduler list               # see the task and its next run time"
+echo
+echo "Read the latest review in full ('jarvis scheduler logs' shows only its first words):"
+echo "  uv run python $REPO_ROOT/scripts/floras-auto/show-morning-review.py"
+echo "  uv run python $REPO_ROOT/scripts/floras-auto/show-morning-review.py --save $(dirname "$NOTES_DIR")/status/morning-review.md"
 echo
 echo "The monitor reads the notes bundle. Keep it fresh, or it works from old notes:"
 echo "  uv run python $REFRESH $NOTES_DIR $BUNDLE_DIR --no-index --every 600"
