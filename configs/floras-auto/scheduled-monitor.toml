@@ -1,11 +1,13 @@
 # Floras Auto — Scheduled Monitor
 #
 # Operative agent that reviews overnight auction and purchase notes every
-# morning, flags follow-ups, and keeps a dated summary in local memory so
-# each run can compare against the previous one.
+# morning: every unit bought, its title and transport status, and what needs
+# a call today. It reads the notes from the recent-notes bundle written by
+# scripts/floras-auto/refresh-notes.py, and it runs without memory.
 #
-# Install with:  scripts/floras-auto/setup-scheduled-monitor.sh
-# Or by hand:    cp configs/floras-auto/scheduled-monitor.toml ~/.openjarvis/config.toml
+# Install with:  scripts/floras-auto/setup-scheduled-monitor.sh [NOTES_DIR] [CRON] [BUNDLE_DIR]
+# The script writes the real bundle folder into allowed_dirs below and the
+# bundle path into the task, so do not install this file by hand.
 #
 # Based on the upstream scheduled-monitor preset
 # (configs/openjarvis/examples/scheduled-monitor.toml).
@@ -29,26 +31,43 @@ max_tokens = 2048
 
 [agent]
 default_agent = "operative"
-max_turns = 20
-context_from_memory = true          # Inject notes from earlier runs into context.
+# A run takes two turns: read the bundle, write the review.
+max_turns = 8
+# Off on purpose. With it on, the summary an earlier run had stored was fed
+# back in, and the second morning's review repeated the first morning's
+# statuses instead of reading the new note.
+context_from_memory = false
 
 [tools]
 # web_search is intentionally left out: the monitor should only read the
-# notes the team indexes, so nothing leaves the local machine.
+# team's own notes, so nothing leaves the local machine.
+# file_read is its only tool. It reads one file, the recent-notes bundle,
+# with every recent note in date order. Until 2026-11-13 the notes reached
+# it through memory search, which hands over the five best-matching pieces
+# in no particular order. On four short test notes it dropped a unit and
+# missed a rebooked pickup, and on a real week of notes five pieces could
+# not cover every unit.
+# memory_store is gone too: see context_from_memory above. The review is the
+# task's result, kept in the scheduler's run log.
 # knowledge_search, knowledge_sql, and scan_chunks from the upstream preset
-# are also left out: on the scheduler path they have no knowledge store and
+# are left out: on the scheduler path they have no knowledge store and
 # answer "No knowledge store configured", which cost the monitor a wasted
-# turn in the real-model run of 2026-11-11. memory_search reads the notes
-# that `jarvis memory index` puts in memory.db.
+# turn in the real-model run of 2026-11-11.
 # think is left out as well: unattended, the model once spent its whole
 # output allowance on a single think call and returned nothing.
-enabled = ["memory_store", "memory_search"]
+enabled = ["file_read"]
 
 [tools.storage]
-default_backend = "sqlite"
+# Deliberately not a real backend: no backend is registered under this name,
+# so the system runs without memory, like the title watch and the weekly
+# recap. Memory is shared by every agent on the machine.
+default_backend = "none"
 
 [security]
 profile = "personal"
+# The only folder file_read may open. The path is a placeholder; the setup
+# script replaces it with the notes-bundle folder.
+allowed_dirs = ["~/FlorasAuto/jarvis"]
 
 [analytics]
 enabled = false

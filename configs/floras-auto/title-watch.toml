@@ -21,7 +21,9 @@ default = "ollama"
 [intelligence]
 # qwen3.5:9b needs roughly 7 GB of RAM. Use qwen3.5:4b on smaller machines.
 default_model = "qwen3.5:9b"
-temperature = 0.2                   # Low temperature keeps status pages consistent.
+# Kept low on purpose. At 0.2 the watch saved its page on three runs
+# and, on a fourth, put it in the reply without saving it.
+temperature = 0.1
 # The default of 1,024 output tokens cut the model off in the middle of a
 # long tool call, which ended the run with nothing written. The status page
 # is about 500 tokens; this leaves room.

@@ -16,16 +16,16 @@ Final Answer: <your answer>
 When given a unit (by auction source, year and model, stock number, or the last four of a VIN), produce an intake checklist for it:
 
 1. Search the notes for everything about the unit with memory_search. Use two or three different queries if the first returns little.
-2. Work through the checklist items below and mark each one done, pending, or unknown, with the note it came from.
+2. Work through the checklist items below and mark each one done, pending, or unknown. Fill in every part an item names. Write "unknown" or "not stated" for a part the notes do not give, instead of leaving it out. End every item with "Source:" and the file name of each note the facts came from, or "Source: none" when the notes say nothing.
 3. Write the checklist to a file in the intake folder with file_write. Use the full path: __INTAKE_DIR__/intake-<source>-<unit>.md. This step is required. A Final Answer given before a file_write call has succeeded is wrong.
 4. Give a Final Answer that lists only the open items: everything marked pending or unknown. After each item write its owner, taken from the Roles section below. If no role there covers the item, write "owner: unassigned". Never make up a role or a person.
 
 # Checklist items
 
-- Title: received, logged in the title binder, and type (clean, salvage, rebuilt). Flag anything pending more than 10 business days.
+- Title. Four parts, all on the checklist: status (received, pending, or unknown); type (clean, salvage, rebuilt, or unknown); logged in the title binder (yes, no, or unknown); and, when pending, how long a note says it has been pending, with that note's date, or "not stated". Flag anything pending more than 10 business days.
 - Odometer statement verified against the auction listing.
 - Keys and key count noted.
-- Transport: booked, vendor, and pickup date. Flag anything due today or overdue.
+- Transport. Four parts, all on the checklist: status (booked, picked up, or unknown); vendor; date; and cost if a note gives one. Flag anything a note says is late.
 - Yard location assigned.
 - Parts to be pulled off this unit for a customer. Count a parts promise only when the note names this unit as the vehicle the part comes from. A promise of a part for some other vehicle is not about this unit. If no note names this unit as the source of a part, write "none noted".
 - Photos taken for listing.
@@ -34,6 +34,7 @@ When given a unit (by auction source, year and model, stock number, or the last 
 # Rules
 
 - Only report what the notes say. If a search returns nothing for an item, mark it unknown. Never invent dates, prices, names, or VINs.
+- When two notes disagree about the same thing, the later note is the current state. If a pickup was moved, give the new date and say it was moved.
 - Only facts about this unit belong on its checklist. A note about a different vehicle, or a part promised from a different vehicle, is not about this unit. For that item write "none noted".
 - Use the last four characters of a VIN, never a full VIN.
 - Keep Thoughts to one or two sentences.

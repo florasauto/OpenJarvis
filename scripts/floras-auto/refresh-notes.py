@@ -13,16 +13,26 @@ It does two things:
      recent-notes-page-N.md     the same text in pages under 2,000 characters
                                 (title watch: its agent type replaces any
                                 longer tool output with a model-written summary)
-   The bundle starts with today's date and a table of business days elapsed,
-   then the full text of every note in the window, oldest first.
+   The bundle starts with today's date, in the long form and the way notes
+   write it (11/09), and a table of business days elapsed since each recent
+   date. Then comes the full text of every note in the window, oldest first,
+   with every date in it followed by [TODAY], [PAST] or [FUTURE]. The model
+   mislabels dates it has to compare with today, so the script does it.
 2. Re-indexes NOTES_DIR into memory with `jarvis memory index`, so the agents
    that search (scheduled monitor, office assistant, intake checker) see new
    notes. Skipped with --no-index, and skipped with a warning when the active
    config has no memory backend (the title watch and weekly recap configs).
 
+3. Re-counts the pending titles on the title watch's status page, if there is
+   one. A line such as "pending since 2026-10-27, 8 business days (not over
+   10)" is rewritten with today's count. The watch carries an old pending
+   title from page to page by copying its line, and it copies the count too,
+   so without this the count would never grow and the 10-day limit would
+   never be reached.
+
 Usage:
     uv run python scripts/floras-auto/refresh-notes.py [NOTES_DIR] [BUNDLE_DIR]
-        [--days 7] [--every SECONDS] [--no-index]
+        [--days 7] [--every SECONDS] [--no-index] [--status-page FILE]
 
     NOTES_DIR    Folder of notes. Default: ~/FlorasAuto/overnight-notes
     BUNDLE_DIR   Where the bundle is written. Default: a "jarvis" folder beside
@@ -31,6 +41,10 @@ Usage:
     --days N     Include notes dated within the last N days. Default 7.
     --every S    Keep running and refresh every S seconds (minimum 60).
     --no-index   Write the bundle only.
+    --status-page FILE
+                 The title watch's status page. Default: status/title-watch.md
+                 beside NOTES_DIR, for example ~/FlorasAuto/status/title-watch.md.
+                 Skipped when the file does not exist.
 
 Which files count as notes: .md, .markdown and .txt files directly inside
 NOTES_DIR (not in subfolders), except names starting with "." or "_".
@@ -64,6 +78,33 @@ PAGE_CHARS = 1800  # stay under the 2,000-character summarisation threshold
 MAX_NOTE_CHARS = 6000  # one very long note must not crowd out the others
 MAX_BUNDLE_CHARS = 24000  # about 6,000 tokens; fits the 16k context with room
 CALENDAR_ROWS = 15  # must reach past the 10-business-day escalation rule
+TITLE_LIMIT_DAYS = 10  # a title pending longer than this needs a call
+
+# Dates as notes write them. Each match gets a [TODAY], [PAST] or [FUTURE]
+# mark on the pages, because the model mislabels dates it has to compare.
+_WEEKDAY_BEFORE = re.compile(
+    r"\b(?:Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)[a-z]*\.?,?\s+$"
+)
+_ISO_DATE = re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b")
+_SLASH_DATE = re.compile(r"(?<![\d/$.])(\d{1,2})/(\d{1,2})(?:/(\d{4}|\d{2}))?(?![\d/])")
+_MONTH_DATE = re.compile(
+    r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+"
+    r"(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(20\d{2})\b)?"
+)
+# A pending-title line on the title watch's status page, as the watch writes
+# it: "pending since 2026-10-27, 8 business days (not over 10)".
+_PENDING_SINCE = re.compile(
+    r"(pending since )(20\d{2}-\d{2}-\d{2}|\d{1,2}/\d{1,2})"
+    r",?\s*(?:more than )?\d+ business days?"
+    r"(?:\s*\((?:not over|OVER) \d+\))?",
+    re.IGNORECASE,
+)
+_MONTH_NUMBER = {
+    name: number
+    for number, name in enumerate(
+        "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(), start=1
+    )
+}
 
 
 @dataclass
@@ -119,15 +160,103 @@ def business_days_elapsed(since: dt.date, today: dt.date) -> int:
     return count
 
 
+def _nearest(month: int, day: int, year: int | None, today: dt.date) -> dt.date | None:
+    """The date meant by a month and day, or None if there is no such date.
+
+    Without a year, pick the year that puts the date closest to today, so
+    12/30 read on January 2 means last week, not next December.
+    """
+    years = [year] if year else [today.year - 1, today.year, today.year + 1]
+    best: dt.date | None = None
+    for candidate_year in years:
+        try:
+            candidate = dt.date(candidate_year, month, day)
+        except ValueError:
+            continue
+        if best is None or abs((candidate - today).days) < abs((best - today).days):
+            best = candidate
+    return best
+
+
+def _mark(day: dt.date | None, today: dt.date) -> str:
+    if day is None:
+        return ""
+    if day == today:
+        return " [TODAY]"
+    return " [PAST]" if day < today else " [FUTURE]"
+
+
+def mark_dates(text: str, today: dt.date) -> str:
+    """Follow each date in *text* with [TODAY], [PAST] or [FUTURE].
+
+    Recognised: 2026-11-09, November 9 (and Nov 9, 2026), 11/09/2026, and
+    11/09. A bare month/day is only taken as a date when both parts have two
+    digits or a weekday name comes first, so "3/4 ton" and "1/2 tank" are
+    left alone. Anything that is not a real date is left alone too.
+    """
+
+    def iso(match: re.Match[str]) -> str:
+        year, month, day = (int(g) for g in match.groups())
+        return match.group(0) + _mark(_nearest(month, day, year, today), today)
+
+    def slash(match: re.Match[str]) -> str:
+        first, second, year_text = match.groups()
+        year = None
+        if year_text:
+            year = int(year_text) if len(year_text) == 4 else 2000 + int(year_text)
+        padded = len(first) == 2 and len(second) == 2
+        after_weekday = _WEEKDAY_BEFORE.search(match.string[: match.start()])
+        if not (year or padded or after_weekday):
+            return match.group(0)
+        date = _nearest(int(first), int(second), year, today)
+        return match.group(0) + _mark(date, today)
+
+    def month_name(match: re.Match[str]) -> str:
+        name, day, year_text = match.groups()
+        year = int(year_text) if year_text else None
+        date = _nearest(_MONTH_NUMBER[name], int(day), year, today)
+        return match.group(0) + _mark(date, today)
+
+    text = _ISO_DATE.sub(iso, text)
+    text = _SLASH_DATE.sub(slash, text)
+    return _MONTH_DATE.sub(month_name, text)
+
+
+def limit_mark(elapsed: int) -> str:
+    """Say whether a business-day count is past the title limit.
+
+    Printed beside every count, because the model, left to compare a count
+    with 10 itself, listed a title pending 4 days as "over 10".
+    """
+    if elapsed > TITLE_LIMIT_DAYS:
+        return f"(OVER {TITLE_LIMIT_DAYS})"
+    return f"(not over {TITLE_LIMIT_DAYS})"
+
+
+def short_date(day: dt.date) -> str:
+    """A date the way notes usually write it: 11/09."""
+    return f"{day.month:02d}/{day.day:02d}"
+
+
 def calendar_lines(today: dt.date) -> list[str]:
+    """One row per recent business day, newest first, then a catch-all row.
+
+    Each row carries the date in both forms the agents meet (2026-11-09 in
+    file names, 11/09 in note text) so the count is a lookup, not arithmetic.
+    """
     lines = []
     day = today
+    elapsed = 0
     while len(lines) < CALENDAR_ROWS:
         if day.weekday() < 5 or day == today:
             elapsed = business_days_elapsed(day, today)
             suffix = " (today)" if day == today else ""
-            lines.append(f"{day.isoformat()} {day.strftime('%a')} = {elapsed}{suffix}")
+            lines.append(
+                f"{day.isoformat()} {day.strftime('%a')} ({short_date(day)})"
+                f" = {elapsed} {limit_mark(elapsed)}{suffix}"
+            )
         day -= dt.timedelta(days=1)
+    lines.append(f"Any earlier date = more than {elapsed} {limit_mark(elapsed + 1)}")
     return lines
 
 
@@ -138,6 +267,7 @@ def render_blocks(
 
     Also returns how many of the oldest notes were left out to save space.
     Blocks let the pager keep a note whole on one page where it fits.
+    Every date in the note text is followed by [TODAY], [PAST] or [FUTURE].
     """
     today = now.date()
     omitted = 0
@@ -152,7 +282,10 @@ def render_blocks(
         "RECENT NOTES FOR THE FLORAS AUTO AGENTS",
         "Written by scripts/floras-auto/refresh-notes.py. Edit the notes, not this.",
         "",
-        f"TODAY IS: {long_date} ({today.isoformat()})",
+        f"TODAY IS: {long_date} ({today.isoformat()}). "
+        f"The notes write this date as {short_date(today)}.",
+        f"A date before {short_date(today)} is in the past. "
+        "A date after it is in the future.",
         f"Bundle written: {now.strftime('%Y-%m-%d %H:%M')}",
         f"Notes folder: {notes_dir}",
         f"Window: notes dated {window_start.isoformat()} or later (last {days} days)",
@@ -163,7 +296,12 @@ def render_blocks(
     header += [
         "",
         "BUSINESS DAYS ELAPSED SINCE A DATE (weekends skipped, holidays are not)",
+        "Find the date, read the number beside it. Do not count yourself.",
         *calendar_lines(today),
+    ]
+    header += [
+        "",
+        "DATES IN THE NOTES are marked [TODAY], [PAST] or [FUTURE] by this script.",
     ]
     if not kept:
         header += ["", "THERE ARE NO NOTES IN THE WINDOW."]
@@ -171,13 +309,16 @@ def render_blocks(
     blocks = ["\n".join(header)]
     for index, note in enumerate(kept, start=1):
         weekday = note.date.strftime("%A")
+        body = mark_dates(note.text, today)
+        since = business_days_elapsed(note.date, today)
         blocks.append(
             "\n".join(
                 [
                     f"===== NOTE {index} of {len(kept)} | file: {note.path.name} =====",
                     f"Note date: {weekday} {note.date.isoformat()}"
-                    f" (from {note.date_source})",
-                    note.text if note.text else "(this note file is empty)",
+                    f" (from {note.date_source})."
+                    f" Business days since this note: {since} {limit_mark(since)}.",
+                    body if body else "(this note file is empty)",
                     f"===== END OF NOTE {index} =====",
                 ]
             )
@@ -272,6 +413,40 @@ def write_bundle(notes_dir: Path, bundle_dir: Path, days: int) -> str:
     return summary
 
 
+def recount_status_page(status_page: Path, today: dt.date) -> str | None:
+    """Bring the pending-title counts on the title watch's page up to date.
+
+    Returns a one-line summary, or None when there is no page to work on.
+    Only the count and its limit mark change; the date and the rest of the
+    line are left exactly as the watch wrote them.
+    """
+    if not status_page.is_file():
+        return None
+    text = status_page.read_text(encoding="utf-8", errors="replace")
+    seen = 0
+
+    def recount(match: re.Match[str]) -> str:
+        nonlocal seen
+        written = match.group(2)
+        if "-" in written:
+            year, month, day = (int(part) for part in written.split("-"))
+        else:
+            month, day = (int(part) for part in written.split("/"))
+            year = None
+        since = _nearest(month, day, year, today)
+        if since is None or since > today:
+            return match.group(0)
+        seen += 1
+        elapsed = business_days_elapsed(since, today)
+        unit = "business day" if elapsed == 1 else "business days"
+        return f"{match.group(1)}{written}, {elapsed} {unit} {limit_mark(elapsed)}"
+
+    updated = _PENDING_SINCE.sub(recount, text)
+    if updated != text:
+        _write_atomic(status_page, updated)
+    return f"status page: {seen} pending title line(s) counted to today"
+
+
 def reindex(notes_dir: Path) -> str:
     jarvis = shutil.which("jarvis")
     if jarvis is None:
@@ -306,6 +481,7 @@ def main() -> int:
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--every", type=int, default=0, metavar="SECONDS")
     parser.add_argument("--no-index", action="store_true")
+    parser.add_argument("--status-page", default=None, metavar="FILE")
     args = parser.parse_args()
 
     notes_dir = Path(args.notes_dir).expanduser().resolve()
@@ -313,6 +489,10 @@ def main() -> int:
         bundle_dir = notes_dir.parent / "jarvis"
     else:
         bundle_dir = Path(args.bundle_dir).expanduser().resolve()
+    if args.status_page is None:
+        status_page = notes_dir.parent / "status" / "title-watch.md"
+    else:
+        status_page = Path(args.status_page).expanduser().resolve()
     if not notes_dir.is_dir():
         print(f"error: notes folder not found: {notes_dir}", file=sys.stderr)
         return 2
@@ -331,6 +511,9 @@ def main() -> int:
         try:
             summary = write_bundle(notes_dir, bundle_dir, args.days)
             print(f"[{stamp}] {summary}", flush=True)
+            recounted = recount_status_page(status_page, dt.date.today())
+            if recounted:
+                print(f"[{stamp}] {recounted}", flush=True)
             if not args.no_index:
                 print(f"[{stamp}] {reindex(notes_dir)}", flush=True)
         except OSError as exc:
