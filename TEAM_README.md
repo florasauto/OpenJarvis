@@ -374,8 +374,8 @@ What to keep in mind when using them:
   monitor once called a title "received" that no note mentions. Treat the
   status page, the morning review, and the recap as prompts to look, not as
   the record.
-- **A larger model has not been tried.** It is the obvious next thing to
-  try for the three monitors if a machine with a GPU is available.
+- **A larger model does better on the two agents that track status, and is
+  too slow without a GPU.** See "A larger model, tried on 2026-11-18" below.
 - **Not tested:** the morning digest with a real mailbox, calendar, and
   voice; the agents firing on their own schedules through the daemons; real
   dealership notes and documents; a week of notes longer than a few pages;
@@ -383,6 +383,66 @@ What to keep in mind when using them:
 - **Speed is for a machine with no GPU.** The model reads about 35 tokens a
   second and writes about 3 there, so every model turn costs half a minute
   or more.
+
+### A larger model, tried on 2026-11-18
+
+The mistakes the three monitors still make raised the question of whether
+a larger model would stop them. The test machine has four CPU cores, 15 GB
+of memory, and no GPU, which decided what could be tried:
+
+| Model | Download | On the test machine |
+|---|---|---|
+| `qwen3.5:9b`, what the configs use | 6.6 GB | Runs |
+| `qwen3.5:27b`, the next size in the same family | 17 GB | Does not fit in memory |
+| `qwen3.8:27b`, the newer generation | 18 GB | Does not fit in memory |
+| `bonsai-2:27b`, 26.9 billion parameters at two bits each | 8.3 GB | Runs, in about 10 GB of memory |
+
+So the comparison is with `bonsai-2:27b`: three times the parameters, a
+different family, and far more heavily compressed. Each agent ran on both
+models on the same day, on the same four-unit test notes, through its own
+setup script, with only `default_model` changed.
+
+| Agent | `qwen3.5:9b` | `bonsai-2:27b` |
+|---|---|---|
+| Scheduled monitor | Transport lists right. Towing vendor in the source slot for two units and no source for a third, one title "pending" that no note mentions, one pending title missing from the calls. | Right on every fact: units, sources, prices, titles, both transport lists, calls with reasons. One unmentioned title missing from the calls. |
+| Weekly recap | One title called "received" that no note mentions. Everything else right. | Titles right. The summary says three units where it lists four, and one $340 quote was counted twice. |
+| Title watch | Dropped the title carried over from the previous page, showed a picked-up truck as late, missed the late delivery. One of three calls. | All three calls right, on two runs of two: the title over 10 days, the pickup due today, the late delivery. One upcoming pickup left off the Waiting list both times. |
+| Time per run | 5.5 to 6.5 minutes | 23 to 34 minutes |
+| Memory | about 7 GB | about 10 GB, more late in a long run |
+
+What this does and does not show:
+
+- **On the two agents that follow each unit across notes, the larger model
+  was clearly better.** The late delivery that was "not confirmed", which
+  the 9B has put on the call list on two first runs of six, was there on
+  both of the larger model's runs.
+- **On the weekly recap it was not better.** It avoided the 9B's worst
+  mistake, a title called "received", and made two of its own.
+- **It is too slow without a GPU.** It reads about 3 tokens a second on
+  this machine, against about 35 for the 9B. The title watch is scheduled
+  every 30 minutes and took 33.
+- **It is at the edge of this machine's memory.** Its runner was killed
+  once for lack of memory at the end of a run.
+- **This is one run of each agent on each model**, and two of the title
+  watch on the larger one. The 9B has varied from run to run on the same
+  notes; the larger model gave the same page twice.
+- **Not tested:** either model on a machine with a GPU, and `qwen3.5:27b`,
+  which is the natural next step in the family the configs already use.
+
+To try another model on one agent, pull it and change `default_model` in
+`~/.openjarvis/config.toml` after that agent's setup script has run:
+
+```bash
+ollama pull bonsai-2:27b
+```
+
+```bash
+sed -i 's/^default_model = .*/default_model = "bonsai-2:27b"/' ~/.openjarvis/config.toml
+```
+
+The title watch, the scheduled monitor, and the weekly recap all read the
+model from that file each time they run. Rerunning a setup script puts
+`qwen3.5:9b` back.
 
 ## Keeping the notes fresh: refresh-notes.py
 
